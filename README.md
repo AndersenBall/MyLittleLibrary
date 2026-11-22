@@ -15,7 +15,7 @@ The API foundation is an ASP.NET Core Minimal API targeting .NET 10.
 From the repository root:
 
 ```sh
-dotnet run --project MyLittleLibrary.Api
+dotnet run --project backend/MyLittleLibrary.Api
 ```
 
 The API listens on `http://localhost:5127` by default. Check `http://localhost:5127/health` for HTTP 200.
