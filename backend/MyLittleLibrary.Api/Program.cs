@@ -79,3 +79,5 @@ library.MapGet("/books/{editionId}/cover", LibraryHandler.GetCover)
     .Produces<FileResult>(StatusCodes.Status200OK, "image/jpeg", "image/png", "image/webp");
 
 app.Run();
+
+public partial class Program { }

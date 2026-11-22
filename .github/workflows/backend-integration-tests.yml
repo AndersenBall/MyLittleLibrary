@@ -1,0 +1,28 @@
+name: Backend integration tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: backend-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-integration-tests:
+    name: Backend integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Run integration tests
+        run: dotnet test backend/MyLittleLibrary.sln --configuration Release
