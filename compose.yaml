@@ -1,0 +1,16 @@
+name: mylittlelibrary
+
+services:
+  api:
+    container_name: mylittlelibrary-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "18080:8080"
+    networks:
+      - mylittlelibrary-network
+
+networks:
+  mylittlelibrary-network:
+    name: mylittlelibrary-network
