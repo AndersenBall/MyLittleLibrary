@@ -80,6 +80,7 @@ public sealed class LibraryFlowTests
         var added = await ReadAsync<GalleryBook>(accepted, HttpStatusCode.Created);
         Assert.Equal(EditionId, added.EditionId);
         Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Single(api.Catalog.Requests);
     }
 
     [Fact]
@@ -103,6 +104,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(EditionId, duplicate.EditionId);
         Assert.Equal(added.AddedAt, duplicate.AddedAt);
         Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Single(api.Catalog.Requests);
     }
 
     [Fact]
@@ -121,6 +123,7 @@ public sealed class LibraryFlowTests
         using var session = api.Store.OpenAsyncSession();
         Assert.Null(await session.LoadAsync<LibraryBook>("LibraryBooks/" + IllustratedEditionId, Ct));
         Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Single(api.Catalog.Requests);
     }
 
     [Fact]

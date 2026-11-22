@@ -41,6 +41,7 @@ internal sealed class ApiScenario : IAsyncDisposable
         finally
         {
             Catalog.Dispose();
+            // TestDriver deletes this scenario's database; its embedded server is shared by the test process.
             driver.Dispose();
         }
     }
@@ -53,7 +54,8 @@ internal sealed class ApiScenario : IAsyncDisposable
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IDocumentStore>();
-                // The driver owns the store, not the host. Leave the initializer registered.
+                // Register the externally owned instance without transferring disposal to the host.
+                // Leave the initializer registered so it checks the test database on startup.
                 services.AddSingleton(store);
                 services.AddHttpClient(nameof(OpenLibraryClient))
                     .ConfigurePrimaryHttpMessageHandler(() => catalog);
@@ -79,6 +81,8 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
+    private const string SearchFields = "key,title,author_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+
     private const string SearchResponse = """
         {
           "docs": [{
@@ -114,7 +118,12 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal("https://openlibrary.org/search.json", uri.GetLeftPart(UriPartial.Path));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog request: {uri}");
-        Assert.Equal(expected, QueryHelpers.ParseQuery(uri.Query)["q"].ToString());
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        Assert.Equal(3, query.Count);
+        Assert.Equal(expected, Assert.Single(query["q"]));
+        Assert.Equal("12", Assert.Single(query["limit"]));
+        var fields = Assert.IsType<string>(Assert.Single(query["fields"]));
+        Assert.Equal(SearchFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
 
         if (FailSearches)
             throw new HttpRequestException("Simulated Open Library outage.");
