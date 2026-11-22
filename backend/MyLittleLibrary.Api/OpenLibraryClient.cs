@@ -35,7 +35,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
                 var id = ReadKey(doc, "/books/", EditionIdPattern());
                 var title = Text(doc, "title") ?? Text(work, "title");
                 var isbns = Texts(doc, "isbn").Select(ParseIsbn).OfType<string>().Distinct().ToArray();
-                if (id is null || title is null || (isbn is not null && !isbns.Contains(isbn)) || !seen.Add(id))
+                if (id is null || title is null || !seen.Add(id))
                     continue;
 
                 var authors = Texts(doc, "author_name");
