@@ -89,10 +89,17 @@
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/AddLibraryBookRequest"
+              },
+              "encoding": {
+                "editionId": {
+                  "style": "form"
+                },
+                "cover": {
+                  "style": "form"
+                }
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -174,16 +181,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
           }
         }
       }
@@ -205,6 +202,9 @@
           }
         ],
         "responses": {
+          "404": {
+            "description": "Not Found"
+          },
           "200": {
             "description": "OK",
             "content": {
@@ -227,9 +227,6 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Not Found"
           }
         }
       }

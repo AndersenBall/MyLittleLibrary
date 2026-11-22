@@ -22,13 +22,13 @@ export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Op
 
 export const getLibraryBooks = <ThrowOnError extends boolean = false>(options?: Options<GetLibraryBooksData, ThrowOnError>): RequestResult<GetLibraryBooksResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetLibraryBooksResponses, unknown, ThrowOnError>({ url: '/api/library/books', ...options });
 
-export const addLibraryBook = <ThrowOnError extends boolean = false>(options: Options<AddLibraryBookData, ThrowOnError>): RequestResult<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError> => (options.client ?? client).post<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError>({
+export const addLibraryBook = <ThrowOnError extends boolean = false>(options?: Options<AddLibraryBookData, ThrowOnError>): RequestResult<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError> => (options?.client ?? client).post<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError>({
     ...formDataBodySerializer,
     url: '/api/library/books',
     ...options,
     headers: {
         'Content-Type': null,
-        ...options.headers
+        ...options?.headers
     }
 });
 

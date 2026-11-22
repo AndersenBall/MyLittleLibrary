@@ -50,24 +50,40 @@ docker compose exec frontend npm run api:generate
 
 ## Shelf smoke test
 
-Run this only against a **fresh, disposable database** in the MyLittleLibrary RavenDB instance. Use a different `MyLittleLibrarySmoke` name for each fresh run. The script adds real catalog entries and a generated PNG to that database, not to the default shelf.
+Run this only in an **isolated Compose project with a fresh, disposable RavenDB volume**. Never recreate the live RavenDB for this test. Save this test-only override as `compose.smoke.local.yaml` (do not commit it):
+
+```yaml
+services:
+  api:
+    container_name: !reset null
+    ports: !override ["127.0.0.1:18082:8080"]
+  frontend:
+    ports: !override ["127.0.0.1:18084:5173"]
+networks:
+  mylittlelibrary-network:
+    name: !reset null
+```
+
+Use the same disposable project throughout; choose a new project name for a fresh run. Start RavenDB first and wait for it to be healthy before starting the API.
 
 ```sh
-docker compose -p mylittlelibrary run -d --rm --no-deps --name mylittlelibrary-smoke \
-  -p 127.0.0.1:18082:8080 -e RavenDb__Database=MyLittleLibrarySmoke api
-# After its /health responds:
+smoke() { docker compose -p mylittlelibrary-smoke -f compose.yaml -f compose.smoke.local.yaml "$@"; }
+smoke config --quiet
+smoke up -d --wait ravendb
+smoke up -d --build api
+# Wait for http://127.0.0.1:18082/health to return 200:
 python3 tests/smoke.py seed 18082
-docker stop mylittlelibrary-smoke
-```
+smoke restart api
+# Wait for /health again, then use the edition ID and query printed by seed:
+python3 tests/smoke.py cache-miss 18082 --edition OL... --query 'The Hobbit'
 
-To check durability in development, recreate only `ravendb` with its volume retained. Then start another test API against the same disposable database with catalog access blocked:
-
-```sh
-docker compose -p mylittlelibrary up -d --force-recreate --no-deps ravendb
-docker compose -p mylittlelibrary run -d --rm --no-deps --name mylittlelibrary-smoke-offline \
-  -p 127.0.0.1:18083:8080 -e RavenDb__Database=MyLittleLibrarySmoke \
+# Recreate only the disposable RavenDB container; keep its volume.
+smoke up -d --force-recreate --no-deps --wait ravendb
+smoke run -d --no-deps -p 127.0.0.1:18083:8080 \
   -e HTTPS_PROXY=http://127.0.0.1:9 -e NO_PROXY=ravendb api
-# After its /health responds:
+# Wait for http://127.0.0.1:18083/health to return 200:
 python3 tests/smoke.py retained 18083
-docker stop mylittlelibrary-smoke-offline
+smoke down --volumes
 ```
+
+New editions must come from a search within the last 15 minutes. If an add returns `404`, run the search again and retry. Repeat adds return the original saved item without requiring a fresh search or a working catalog.

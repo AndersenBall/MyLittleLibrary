@@ -99,7 +99,7 @@ export type GetLibraryBooksResponses = {
 export type GetLibraryBooksResponse = GetLibraryBooksResponses[keyof GetLibraryBooksResponses];
 
 export type AddLibraryBookData = {
-    body: AddLibraryBookRequest;
+    body?: AddLibraryBookRequest;
     path?: never;
     query?: never;
     url: '/api/library/books';
@@ -130,10 +130,6 @@ export type AddLibraryBookErrors = {
      * Unsupported Media Type
      */
     415: ProblemDetails;
-    /**
-     * Service Unavailable
-     */
-    503: ProblemDetails;
 };
 
 export type AddLibraryBookError = AddLibraryBookErrors[keyof AddLibraryBookErrors];

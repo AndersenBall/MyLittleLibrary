@@ -12,8 +12,9 @@ public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId);
 public sealed class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
 
-public sealed partial class CatalogClient(HttpClient http, IMemoryCache cache, CatalogRateLimit rateLimit)
+public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cache, CatalogRateLimit rateLimit)
 {
+    private static readonly object SnapshotGate = new();
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromMinutes(15);
     private const string Fields = "key,title,author_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
 
@@ -22,7 +23,7 @@ public sealed partial class CatalogClient(HttpClient http, IMemoryCache cache, C
         var isbn = ParseIsbn(query);
         var providerQuery = isbn is null ? query : $"isbn:{isbn}";
         using var response = await GetAsync($"search.json?q={Uri.EscapeDataString(providerQuery)}&limit=12&fields={Fields}", ct);
-        if (response is null || !response.RootElement.TryGetProperty("docs", out var docs) || docs.ValueKind != JsonValueKind.Array)
+        if (response is null || Property(response.RootElement, "docs") is not { ValueKind: JsonValueKind.Array } docs)
             throw new CatalogUnavailableException();
 
         var results = new List<CatalogEdition>();
@@ -41,10 +42,21 @@ public sealed partial class CatalogClient(HttpClient http, IMemoryCache cache, C
                 if (authors.Length == 0) authors = Texts(work, "author_name");
                 var edition = CreateEdition(id, title, authors, Texts(doc, "publisher"),
                     Texts(doc, "publish_date").FirstOrDefault(), isbns, PositiveInt(Property(doc, "cover_i")));
-                var snapshot = new EditionSnapshot(edition, ReadKey(work, "/works/", WorkIdPattern()));
-                // Keep an exact ISBN selection if a later title search omits edition fields.
-                if (isbn is not null || !cache.TryGetValue<EditionSnapshot>($"edition:{id}", out _))
-                    cache.Set($"edition:{id}", snapshot, SnapshotLifetime);
+                var workId = ReadKey(work, "/works/", WorkIdPattern());
+                lock (SnapshotGate)
+                {
+                    if (cache.TryGetValue<EditionSnapshot>($"edition:{id}", out var previous) && previous is not null)
+                    {
+                        // Both snapshots identify this edition; keep ISBNs verified by either search.
+                        edition = edition with
+                        {
+                            Isbn10 = edition.Isbn10.Union(previous.Edition.Isbn10).ToArray(),
+                            Isbn13 = edition.Isbn13.Union(previous.Edition.Isbn13).ToArray()
+                        };
+                        workId ??= previous.WorkId;
+                    }
+                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId), SnapshotLifetime);
+                }
                 results.Add(edition);
                 if (results.Count == 12) return [.. results];
             }
@@ -52,37 +64,8 @@ public sealed partial class CatalogClient(HttpClient http, IMemoryCache cache, C
         return [.. results];
     }
 
-    public async Task<EditionSnapshot?> ResolveAsync(string editionId, CancellationToken ct)
-    {
-        if (!EditionIdPattern().IsMatch(editionId)) return null;
-        if (cache.TryGetValue<EditionSnapshot>($"edition:{editionId}", out var cached)) return cached;
-        using var response = await GetAsync($"books/{editionId}.json", ct);
-        if (response is null) return null;
-        var doc = response.RootElement;
-        if (ReadKey(doc, "/books/", EditionIdPattern()) != editionId || Text(doc, "title") is not { } title)
-            throw new CatalogUnavailableException();
-
-        var workId = Array(doc, "works").Select(w => ReadKey(w, "/works/", WorkIdPattern())).FirstOrDefault();
-        var authorIds = Array(doc, "authors").Select(ReadAuthorKey).OfType<string>().Distinct().Take(8).ToArray();
-        if (authorIds.Length == 0 && workId is not null)
-        {
-            using var work = await GetAsync($"works/{workId}.json", ct);
-            if (work is not null)
-                authorIds = Array(work.RootElement, "authors").Select(ReadAuthorKey).OfType<string>().Distinct().Take(8).ToArray();
-        }
-        var authors = new List<string>();
-        foreach (var id in authorIds)
-        {
-            using var author = await GetAsync($"authors/{id}.json", ct);
-            if (author is not null && Text(author.RootElement, "name") is { } name) authors.Add(name);
-        }
-        var edition = CreateEdition(editionId, title, [.. authors], Texts(doc, "publishers"), Text(doc, "publish_date"),
-            Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")).Select(ParseIsbn).OfType<string>().Distinct().ToArray(),
-            Array(doc, "covers").Select(PositiveInt).FirstOrDefault(n => n is not null));
-        var snapshot = new EditionSnapshot(edition, workId);
-        cache.Set($"edition:{editionId}", snapshot, SnapshotLifetime);
-        return snapshot;
-    }
+    public EditionSnapshot? FindSearchedEdition(string editionId) =>
+        cache.Get<EditionSnapshot>($"edition:{editionId}");
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken ct)
     {
@@ -145,15 +128,10 @@ public sealed partial class CatalogClient(HttpClient http, IMemoryCache cache, C
     private static string? ReadKey(JsonElement obj, string prefix, Regex pattern) =>
         Text(obj, "key") is { } key && key.StartsWith(prefix, StringComparison.Ordinal) && pattern.IsMatch(key[prefix.Length..])
             ? key[prefix.Length..] : null;
-    private static string? ReadAuthorKey(JsonElement obj) =>
-        ReadKey(Property(obj, "author"), "/authors/", AuthorIdPattern()) ?? ReadKey(obj, "/authors/", AuthorIdPattern());
-
     [GeneratedRegex("\\AOL[0-9]{1,15}M\\z", RegexOptions.CultureInvariant)]
     private static partial Regex EditionIdPattern();
     [GeneratedRegex("\\AOL[0-9]{1,15}W\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WorkIdPattern();
-    [GeneratedRegex("\\AOL[0-9]{1,15}A\\z", RegexOptions.CultureInvariant)]
-    private static partial Regex AuthorIdPattern();
 }
 
 public sealed class CatalogRateLimit(bool hasContact)
