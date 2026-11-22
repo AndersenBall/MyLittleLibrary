@@ -10,6 +10,7 @@ export default defineConfig({
     allowedHosts: ['realtornow-jeb.tail69be98.ts.net'],
     proxy: {
       '/health': 'http://api:8080',
+      '/api': 'http://api:8080',
     },
   },
 });

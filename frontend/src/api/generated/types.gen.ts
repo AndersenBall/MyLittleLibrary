@@ -4,6 +4,174 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AddLibraryBookRequest = {
+    editionId: string;
+    cover?: Blob | File | null;
+};
+
+export type CatalogEdition = {
+    editionId: string;
+    title: string;
+    authors: Array<string>;
+    publishers: Array<string>;
+    publicationDate?: string | null;
+    isbn10: Array<string>;
+    isbn13: Array<string>;
+    coverUrl?: string | null;
+    editionUrl: string;
+    alreadyAdded: boolean;
+};
+
+export type GalleryBook = {
+    editionId: string;
+    title: string;
+    authors: Array<string>;
+    coverUrl?: string | null;
+    addedAt: string;
+};
+
+export type HttpValidationProblemDetails = {
+    type?: string | null;
+    title?: string | null;
+    status?: number | null;
+    detail?: string | null;
+    instance?: string | null;
+    errors: {
+        [key: string]: Array<string>;
+    };
+    [key: string]: unknown;
+};
+
+export type ProblemDetails = {
+    type?: string | null;
+    title?: string | null;
+    status?: number | null;
+    detail?: string | null;
+    instance?: string | null;
+    [key: string]: unknown;
+};
+
+export type SearchCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+    };
+    url: '/api/catalog/search';
+};
+
+export type SearchCatalogErrors = {
+    /**
+     * Bad Request
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type SearchCatalogError = SearchCatalogErrors[keyof SearchCatalogErrors];
+
+export type SearchCatalogResponses = {
+    /**
+     * OK
+     */
+    200: Array<CatalogEdition>;
+};
+
+export type SearchCatalogResponse = SearchCatalogResponses[keyof SearchCatalogResponses];
+
+export type GetLibraryBooksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/library/books';
+};
+
+export type GetLibraryBooksResponses = {
+    /**
+     * OK
+     */
+    200: Array<GalleryBook>;
+};
+
+export type GetLibraryBooksResponse = GetLibraryBooksResponses[keyof GetLibraryBooksResponses];
+
+export type AddLibraryBookData = {
+    body?: AddLibraryBookRequest;
+    path?: never;
+    query?: never;
+    url: '/api/library/books';
+};
+
+export type AddLibraryBookErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * Forbidden
+     */
+    403: ProblemDetails;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Content Too Large
+     */
+    413: ProblemDetails;
+    /**
+     * Unsupported Media Type
+     */
+    415: ProblemDetails;
+};
+
+export type AddLibraryBookError = AddLibraryBookErrors[keyof AddLibraryBookErrors];
+
+export type AddLibraryBookResponses = {
+    /**
+     * OK
+     */
+    200: GalleryBook;
+    /**
+     * Created
+     */
+    201: GalleryBook;
+};
+
+export type AddLibraryBookResponse = AddLibraryBookResponses[keyof AddLibraryBookResponses];
+
+export type GetLibraryCoverData = {
+    body?: never;
+    path: {
+        editionId: string;
+    };
+    query?: never;
+    url: '/api/library/books/{editionId}/cover';
+};
+
+export type GetLibraryCoverErrors = {
+    /**
+     * Not Found
+     */
+    404: unknown;
+};
+
+export type GetLibraryCoverResponses = {
+    /**
+     * OK
+     */
+    200: Blob | File;
+};
+
+export type GetLibraryCoverResponse = GetLibraryCoverResponses[keyof GetLibraryCoverResponses];
+
 export type GetHealthData = {
     body?: never;
     path?: never;

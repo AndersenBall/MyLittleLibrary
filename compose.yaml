@@ -6,8 +6,27 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    environment:
+      RavenDb__Url: http://ravendb:8080
+      RavenDb__Database: MyLittleLibrary
+      OpenLibrary__ContactEmail: ${MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL:-}
+    depends_on:
+      - ravendb
     ports:
       - "127.0.0.1:18080:8080"
+    networks:
+      - mylittlelibrary-network
+
+  ravendb:
+    image: ravendb/ravendb:7.2.4
+    environment:
+      RAVEN_Setup_Mode: None
+      # RavenDB classifies 0.0.0.0 as public; Docker does not publish this port.
+      RAVEN_Security_UnsecuredAccessAllowed: PublicNetwork
+      RAVEN_ServerUrl: http://0.0.0.0:8080
+      RAVEN_PublicServerUrl: http://ravendb:8080
+    volumes:
+      - ravendb-data:/var/lib/ravendb/data
     networks:
       - mylittlelibrary-network
 
@@ -30,3 +49,4 @@ networks:
 
 volumes:
   frontend-node-modules:
+  ravendb-data:
