@@ -1,28 +1,29 @@
-name: Backend integration tests
-
+name: Backend CI
 on:
   pull_request:
-    branches:
-      - main
-
-concurrency:
-  group: backend-tests-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
+    branches: [main]
 permissions:
   contents: read
-
+concurrency:
+  group: backend-ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
-  backend-integration-tests:
-    name: Backend integration tests
+  backend:
+    name: Backend build and integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v6
-      - name: Set up .NET
+      - name: Set up .NET 10
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
-      - name: Run integration tests
-        run: dotnet test backend/MyLittleLibrary.sln --configuration Release
+          dotnet-version: '10.0.x'
+      - name: Restore backend solution
+        run: dotnet restore backend/MyLittleLibrary.sln
+      - name: Build backend solution
+        run: dotnet build backend/MyLittleLibrary.sln --configuration Release --no-restore
+      - name: Run backend integration tests
+        run: >
+          dotnet test tests/MyLittleLibrary.IntegrationTests/MyLittleLibrary.IntegrationTests.csproj
+          --configuration Release --no-build
