@@ -7,7 +7,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "18080:8080"
+      - "127.0.0.1:18080:8080"
     networks:
       - mylittlelibrary-network
 
