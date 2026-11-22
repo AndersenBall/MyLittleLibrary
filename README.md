@@ -34,6 +34,8 @@ The API creates the `MyLittleLibrary` RavenDB database on startup. RavenDB is re
 
 For Open Library's identified API rate limit, set `MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL` for Compose (or `OpenLibrary__ContactEmail` for a standalone API). Without a valid address the app uses the lower anonymous limit. The shelf is shared by everyone with access to the app; there is no sign-in. Hosted cover art can be unavailable independently of the saved metadata. Upload a JPEG, PNG, or WebP up to 5 MiB only if you have permission to keep it; the app stores the original bytes in RavenDB.
 
+New editions must come from a search within the last 15 minutes. If an add returns `404`, run the search again and retry. Repeat adds return the original saved item without requiring a fresh search or a working catalog.
+
 On `realtornow-jeb`, private Tailscale Serve maps [the React app](https://realtornow-jeb.tail69be98.ts.net:8445/) to `127.0.0.1:18081` and [Swagger](https://realtornow-jeb.tail69be98.ts.net:8444/swagger) to `127.0.0.1:18080`.
 
 ## Frontend checks and API client
@@ -48,42 +50,12 @@ docker compose exec frontend npm run api:generate
 
 `api:generate` regenerates the checked-in Fetch client from `frontend/openapi.json`. When the API contract changes, run `docker compose exec frontend npm run api:refresh` to fetch the running API's Swagger document and regenerate the client. Commit the updated snapshot and generated files together.
 
-## Shelf smoke test
+## Backend integration tests
 
-Run this only in an **isolated Compose project with a fresh, disposable RavenDB volume**. Never recreate the live RavenDB for this test. Save this test-only override as `compose.smoke.local.yaml` (do not commit it):
-
-```yaml
-services:
-  api:
-    container_name: !reset null
-    ports: !override ["127.0.0.1:18082:8080"]
-  frontend:
-    ports: !override ["127.0.0.1:18084:5173"]
-networks:
-  mylittlelibrary-network:
-    name: !reset null
-```
-
-Use the same disposable project throughout; choose a new project name for a fresh run. Start RavenDB first and wait for it to be healthy before starting the API.
+With the .NET 10 SDK, run from the repository root:
 
 ```sh
-smoke() { docker compose -p mylittlelibrary-smoke -f compose.yaml -f compose.smoke.local.yaml "$@"; }
-smoke config --quiet
-smoke up -d --wait ravendb
-smoke up -d --build api
-# Wait for http://127.0.0.1:18082/health to return 200:
-python3 tests/smoke.py seed 18082
-smoke restart api
-# Wait for /health again, then use the edition ID and query printed by seed:
-python3 tests/smoke.py cache-miss 18082 --edition OL... --query 'The Hobbit'
-
-# Recreate only the disposable RavenDB container; keep its volume.
-smoke up -d --force-recreate --no-deps --wait ravendb
-smoke run -d --no-deps -p 127.0.0.1:18083:8080 \
-  -e HTTPS_PROXY=http://127.0.0.1:9 -e NO_PROXY=ravendb api
-# Wait for http://127.0.0.1:18083/health to return 200:
-python3 tests/smoke.py retained 18083
-smoke down --volumes
+dotnet test backend/MyLittleLibrary.sln --configuration Release
 ```
 
-New editions must come from a search within the last 15 minutes. If an add returns `404`, run the search again and retry. Repeat adds return the original saved item without requiring a fresh search or a working catalog.
+This is the routine backend check locally and on pull requests targeting `main`. It runs the real API in-process, starts its own RavenDB server with a disposable database per scenario, and stubs Open Library at the HTTP handler. No Compose stack, development database, or Open Library access is required.
