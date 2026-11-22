@@ -1,0 +1,29 @@
+{
+  "name": "mylittlelibrary-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "api:generate": "openapi-ts",
+    "api:refresh": "node scripts/refresh-openapi.mjs && npm run api:generate"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.8"
+  },
+  "overrides": {
+    "@hey-api/json-schema-ref-parser": {
+      "js-yaml": "4.3.2"
+    }
+  }
+}

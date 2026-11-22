@@ -11,6 +11,22 @@ services:
     networks:
       - mylittlelibrary-network
 
+  frontend:
+    build: ./frontend
+    command: sh -c "npm ci && npm run dev"
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:18081:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    networks:
+      - mylittlelibrary-network
+
 networks:
   mylittlelibrary-network:
     name: mylittlelibrary-network
+
+volumes:
+  frontend-node-modules:

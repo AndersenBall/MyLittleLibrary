@@ -28,4 +28,18 @@ From the repository root:
 docker compose up --build
 ```
 
-The API is available at `http://localhost:18080`; `GET /health` returns HTTP 200. The host port is 18080 to avoid conflicts with other local applications. Stop it with `Ctrl+C`.
+Open the React app at <http://localhost:18081>. The Vite dev server reloads frontend edits and proxies `/health` to the API over the Compose network. The API is also available directly at <http://localhost:18080>, with Swagger at <http://localhost:18080/swagger>. Both ports bind to loopback. Stop Compose with `Ctrl+C`.
+
+On `realtornow-jeb`, private Tailscale Serve maps [the React app](https://realtornow-jeb.tail69be98.ts.net:8445/) to `127.0.0.1:18081` and [Swagger](https://realtornow-jeb.tail69be98.ts.net:8444/swagger) to `127.0.0.1:18080`.
+
+## Frontend checks and API client
+
+With Compose running, execute these from the repository root:
+
+```sh
+docker compose exec frontend npm run typecheck
+docker compose exec frontend npm run build
+docker compose exec frontend npm run api:generate
+```
+
+`api:generate` regenerates the checked-in Fetch client from `frontend/openapi.json`. When the API contract changes, run `docker compose exec frontend npm run api:refresh` to fetch the running API's Swagger document and regenerate the client. Commit the updated snapshot and generated files together.
