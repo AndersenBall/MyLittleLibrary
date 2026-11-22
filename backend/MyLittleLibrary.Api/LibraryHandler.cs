@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Raven.Client.Documents;
@@ -152,14 +151,4 @@ public static class LibraryHandler
         public static CoverValidationResult Invalid(string error, int statusCode) => new(null, error, statusCode);
     }
     private sealed record ValidatedCover(MemoryStream Bytes, string ContentType);
-}
-
-public sealed class AddLibraryBookRequest
-{
-    [FromForm(Name = "editionId")]
-    [Required]
-    public string EditionId { get; set; } = "";
-
-    [FromForm(Name = "cover")]
-    public IFormFile? Cover { get; set; }
 }

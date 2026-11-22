@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
 
-public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
-
 public sealed class LibraryBook
 {
     public const string CoverAttachmentName = "cover";
