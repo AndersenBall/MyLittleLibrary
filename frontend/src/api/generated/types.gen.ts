@@ -51,6 +51,19 @@ export type ProblemDetails = {
     [key: string]: unknown;
 };
 
+export type ScanBookRequest = {
+    photo?: Blob | File | null;
+};
+
+export type ScanBooksResponse = {
+    books: Array<ScannedBook>;
+};
+
+export type ScannedBook = {
+    title?: string | null;
+    author?: string | null;
+};
+
 export type SearchCatalogData = {
     body?: never;
     path?: never;
@@ -161,6 +174,55 @@ export type AddLibraryBookResponses = {
 };
 
 export type AddLibraryBookResponse = AddLibraryBookResponses[keyof AddLibraryBookResponses];
+
+export type ScanLibraryBooksData = {
+    body: ScanBookRequest;
+    path?: never;
+    query?: never;
+    url: '/api/library/books/scan';
+};
+
+export type ScanLibraryBooksErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Content Too Large
+     */
+    413: ProblemDetails;
+    /**
+     * Unsupported Media Type
+     */
+    415: ProblemDetails;
+    /**
+     * Too Many Requests
+     */
+    429: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+    /**
+     * Gateway Timeout
+     */
+    504: ProblemDetails;
+};
+
+export type ScanLibraryBooksError = ScanLibraryBooksErrors[keyof ScanLibraryBooksErrors];
+
+export type ScanLibraryBooksResponses = {
+    /**
+     * OK
+     */
+    200: ScanBooksResponse;
+};
+
+export type ScanLibraryBooksResponse = ScanLibraryBooksResponses[keyof ScanLibraryBooksResponses];
 
 export type GetLibraryCoverData = {
     body?: never;

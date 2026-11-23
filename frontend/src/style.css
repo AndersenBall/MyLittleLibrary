@@ -60,6 +60,23 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .search-hint { max-width: 760px; margin-top: 40px; }
 .hint-icon { display: block; margin-bottom: 13px; color: #bd9672; font-size: 2.5rem; }
 .results-list { max-width: 850px; display: grid; gap: 15px; margin-top: 30px; }
+.scan-layout { display: grid; grid-template-columns: minmax(260px, 400px) minmax(0, 1fr); align-items: start; gap: 28px; }
+.scan-panel, .scan-results { padding: 22px; border: 1px solid #e5e6df; border-radius: 12px; background: #fbfbf8; }
+.scan-file-input { display: none; }
+.scan-hint { margin: 9px 0 17px; color: #849087; font-size: .73rem; }
+.scan-preview { margin: 0 0 18px; }
+.scan-preview img { display: block; width: 100%; max-height: 430px; object-fit: contain; border-radius: 7px; background: #eef0eb; }
+.scan-preview p { overflow: hidden; margin: 7px 0 0; color: #77837b; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.scan-progress { display: flex; align-items: center; gap: 9px; margin: 15px 0 0; color: #69766f; font-size: .86rem; }
+.scan-error { margin: 15px 0 0; color: #a15e3d; font-size: .84rem; line-height: 1.45; }
+.scan-results h2 { margin-bottom: 17px; color: #38564a; font-family: 'Playfair Display', Georgia, serif; font-size: 1.45rem; }
+.scan-book-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.scan-book-list li { display: grid; gap: 5px; padding: 13px 15px; border: 1px solid #e7e7df; border-radius: 8px; background: #fff; }
+.scan-book-list strong { color: #293c35; font-size: .95rem; }
+.scan-book-list span { color: #7a837e; font-size: .81rem; }
+.scan-empty { padding: 20px; border: 1px dashed #d7ddd5; border-radius: 9px; color: #78837d; }
+.scan-empty strong { color: #38564a; }
+.scan-empty p { margin: 9px 0 16px; font-size: .86rem; line-height: 1.45; }
 .result-card { display: flex; gap: 20px; padding: 16px; border: 1px solid #e7e7df; border-radius: 10px; background: #fff; box-shadow: 0 3px 12px rgba(48,62,51,.035); }
 .result-cover { flex: 0 0 84px; width: 84px; height: 125px; }
 .result-details { min-width: 0; padding: 4px 0; display: flex; flex-direction: column; align-items: flex-start; }
@@ -69,4 +86,5 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .file-label { color: #738178; font-size: .75rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 footer { display: flex; justify-content: space-between; padding: 24px max(24px, calc((100% - 1180px) / 2)); border-top: 1px solid #e6e5dd; color: #9ba29d; font-size: .72rem; }
-@media (max-width: 620px) { .site-header { height: 68px; padding: 0 18px; } nav { gap: 18px; } nav a { font-size: .8rem; } main { width: min(100% - 32px, 1180px); } .page { padding-top: 42px; } .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 32px; } .page-heading .button { align-self: stretch; } h1 { font-size: 2.8rem; } .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 27px 15px; } .search-row { flex-direction: column; } .search-row .button { width: 100%; } .result-card { gap: 14px; padding: 12px; } .result-cover { flex-basis: 68px; width: 68px; height: 102px; } .result-details h2 { font-size: 1rem; } .result-actions { gap: 12px; } footer { padding: 20px 16px; } footer span:last-child { display: none; } }
+@media (max-width: 620px) { .site-header { height: auto; min-height: 68px; padding: 10px 18px; gap: 8px; flex-wrap: wrap; } nav { flex: 0 0 100%; height: 34px; justify-content: space-between; gap: 12px; } nav a { font-size: .78rem; } main { width: min(100% - 32px, 1180px); } .page { padding-top: 42px; } .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 32px; } .page-heading .button { align-self: stretch; } h1 { font-size: 2.8rem; } .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 27px 15px; } .search-row { flex-direction: column; } .search-row .button { width: 100%; } .result-card { gap: 14px; padding: 12px; } .result-cover { flex-basis: 68px; width: 68px; height: 102px; } .result-details h2 { font-size: 1rem; } .result-actions { gap: 12px; } footer { padding: 20px 16px; } footer span:last-child { display: none; } }
+@media (max-width: 760px) { .scan-layout { grid-template-columns: minmax(0, 1fr); } }

@@ -26,6 +26,8 @@ The API creates the `MyLittleLibrary` RavenDB database on startup. RavenDB is re
 
 For Open Library's identified API rate limit, set `MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL` for Compose (or `OpenLibrary__ContactEmail` for a standalone API). Without a valid address the app uses the lower anonymous limit. Hosted cover art can be unavailable independently of the saved metadata. Upload a JPEG, PNG, or WebP up to 5 MiB only if you have permission to keep it; the original bytes are stored on your private shelf entry in RavenDB.
 
+To scan book photos, set `OPENAI_API_KEY` in the repository's ignored `.env` file before starting Compose. Compose passes the key only to the API; never put it in the frontend or commit it. For a standalone API, set `OpenAI__ApiKey` instead. Scanning sends the selected image to OpenAI for recognition; scan results are displayed only and photos are not saved by MyLittleLibrary.
+
 An edition missing from the shared catalog cache must come from a search within the last 15 minutes. If an add returns `404`, run the search again and retry. Each edition has one shared `LibraryBooks/{editionId}` document and each user can have one private `LibraryEntries/{ownerKey}/{editionId}` reference. Repeat adds return the caller's existing entry without changing its cover. Existing book documents and their old uploads are retained, but aren't assigned to anyone's shelf; add a book again to create a private entry. Legacy uploads aren't served.
 
 On `realtornow-jeb`, private Tailscale Serve maps [the React app](https://realtornow-jeb.tail69be98.ts.net:8445/) to `127.0.0.1:18081` and [Swagger](https://realtornow-jeb.tail69be98.ts.net:8444/swagger) to `127.0.0.1:18080`.

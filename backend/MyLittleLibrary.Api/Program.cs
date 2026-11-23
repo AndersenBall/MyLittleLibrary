@@ -18,6 +18,16 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddMemoryCache();
 builder.AddLibraryAuthentication();
 builder.AddRavenDb();
+builder.Services.AddHttpClient("OpenAI", (serviceProvider, http) =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    http.BaseAddress = new Uri(configuration["OpenAI:Url"] ?? "https://api.openai.com/v1/");
+    http.Timeout = Timeout.InfiniteTimeSpan;
+    var apiKey = configuration["OpenAI:ApiKey"];
+    if (!string.IsNullOrWhiteSpace(apiKey))
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+});
+builder.Services.AddSingleton<OpenAiBookScanner>();
 var contact = builder.Configuration["OpenLibrary:ContactEmail"]?.Trim();
 if (!MailAddress.TryCreate(contact, out var address) || address.Address != contact ||
     contact!.Any(c => c is < '!' or > '~' or '(' or ')' or '\\')) contact = null;
@@ -88,6 +98,24 @@ library.MapPost("/books", LibraryHandler.AddBook)
     .ProducesProblem(StatusCodes.Status409Conflict)
     .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
     .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
+library.MapPost("/books/scan", BookScanHandler.Scan)
+    .WithName("scanLibraryBooks")
+    .Accepts<ScanBookRequest>("multipart/form-data")
+    .WithMetadata(new RequestSizeLimitAttribute(OpenAiBookScanner.MaxPhotoBytes + 64 * 1024))
+    .WithMetadata(new RequestFormLimitsAttribute
+    {
+        MultipartBodyLengthLimit = OpenAiBookScanner.MaxPhotoBytes + 64 * 1024,
+        MemoryBufferThreshold = (int)(OpenAiBookScanner.MaxPhotoBytes + 64 * 1024)
+    })
+    .DisableAntiforgery()
+    .Produces<ScanBooksResponse>(StatusCodes.Status200OK)
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
+    .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
+    .ProducesProblem(StatusCodes.Status429TooManyRequests)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+    .ProducesProblem(StatusCodes.Status504GatewayTimeout);
+
 library.MapGet("/books/{editionId}/cover", LibraryHandler.GetCover)
     .WithName("getLibraryCover")
     .Produces<FileResult>(StatusCodes.Status200OK, "image/jpeg", "image/png", "image/webp");

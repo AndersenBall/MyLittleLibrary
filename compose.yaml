@@ -10,6 +10,7 @@ services:
       RavenDb__Url: http://ravendb:8080
       RavenDb__Database: MyLittleLibrary
       OpenLibrary__ContactEmail: ${MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL:-}
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
     depends_on:
       - ravendb
     ports:

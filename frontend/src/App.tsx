@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import {
   apiMessage,
   type CatalogEdition,
   type GalleryBook,
+  type ScannedBook,
   type LibraryApi,
 } from './api';
 
-type Route = 'library' | 'add';
+type Route = 'library' | 'add' | 'scan';
 
 function routeFromLocation(): Route {
-  return window.location.pathname === '/add' ? 'add' : 'library';
+  if (window.location.pathname === '/add') return 'add';
+  if (window.location.pathname === '/scan') return 'scan';
+  return 'library';
 }
 
 function Cover({ src, title, authors, className = '' }: { src?: string | null; title: string; authors: string[]; className?: string }) {
@@ -57,6 +60,7 @@ function Shell({ route, navigate, signOut, children }: { route: Route; navigate:
         </a>
         <nav aria-label="Primary navigation">
           <a className={route === 'library' ? 'active' : ''} href="/" onClick={(event) => { event.preventDefault(); navigate('library'); }}>My Library</a>
+          <a className={route === 'scan' ? 'active' : ''} href="/scan" onClick={(event) => { event.preventDefault(); navigate('scan'); }}>Scan Books</a>
           <a className={route === 'add' ? 'active' : ''} href="/add" onClick={(event) => { event.preventDefault(); navigate('add'); }}>Add Books</a>
           {signOut && <button className="button button-secondary" type="button" onClick={signOut}>Sign out</button>}
         </nav>
@@ -155,9 +159,76 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
   </section>;
 }
 
+function ScanBooks({ api }: { api: LibraryApi }) {
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>();
+  const [books, setBooks] = useState<ScannedBook[] | null>(null);
+  const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+
+  function selectPhoto(event: ChangeEvent<HTMLInputElement>) {
+    setPhoto(event.target.files?.[0] ?? null);
+    setBooks(null);
+    setError('');
+    event.currentTarget.value = '';
+  }
+
+  useEffect(() => {
+    if (!photo) { setPreview(undefined); return; }
+    const url = URL.createObjectURL(photo);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
+  async function scan() {
+    if (!photo || scanning) return;
+    setScanning(true);
+    setError('');
+    setBooks(null);
+    try { setBooks(await api.scanBooks(photo)); }
+    catch (failure) {
+      const status = failure && typeof failure === 'object' && 'status' in failure ? Number(failure.status) : 0;
+      setError(status === 429
+        ? 'The scanner is busy. Your photo is still selected; retry in a moment.'
+        : status === 503
+          ? 'Book recognition is unavailable. Your photo is still selected; please retry shortly.'
+          : status === 504
+            ? 'The scan took too long. Try a smaller or clearer photo, or retry this one.'
+            : apiMessage(failure, 'We couldn’t scan this photo. Check it and try again.'));
+    } finally { setScanning(false); }
+  }
+
+  return <section className="page scan-page">
+    <div className="page-heading compact"><div><p className="eyebrow">Read your shelf</p><h1>Scan Books</h1><p className="lede">Photograph a cover, a few books, or a shelf to read visible titles and authors.</p></div></div>
+    <div className="scan-layout">
+      <div className="scan-panel">
+        <button className="button button-secondary" type="button" disabled={scanning} onClick={() => cameraRef.current?.click()}>Take a photo</button>
+        <input ref={cameraRef} className="scan-file-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={scanning} onChange={selectPhoto} />
+        <button className="button button-secondary" type="button" disabled={scanning} onClick={() => inputRef.current?.click()}>Choose a photo</button>
+        <input ref={inputRef} className="scan-file-input" type="file" accept="image/jpeg,image/png,image/webp" disabled={scanning} onChange={selectPhoto} />
+        <p className="scan-hint">JPEG, PNG, or WebP · up to 10 MiB</p>
+        {preview && <div className="scan-preview"><img src={preview} alt="Selected book photo preview" /><p>{photo?.name}</p></div>}
+        <button className="button button-primary" type="button" disabled={!photo || scanning} onClick={() => void scan()}>
+          {scanning ? 'Scanning…' : 'Scan photo'}
+        </button>
+        {scanning && <p className="scan-progress" role="status"><span className="spinner" />Scanning…</p>}
+        {error && <p className="scan-error" role="alert">{error}</p>}
+      </div>
+      {books !== null && <section className="scan-results" aria-live="polite" aria-label="Scan results">
+        <h2>Scan results</h2>
+        {books.length === 0
+          ? <div className="scan-empty"><strong>No readable book text found.</strong><p>Move closer, improve the lighting, or retake the photo with the covers and spines in focus.</p><button className="button button-secondary" type="button" onClick={() => inputRef.current?.click()}>Choose another photo</button></div>
+          : <ol className="scan-book-list">{books.map((book, index) => <li key={`${index}-${book.title ?? ''}-${book.author ?? ''}`}><strong>{book.title ?? 'Title unreadable'}</strong><span>{book.author ?? 'Author unreadable'}</span></li>)}</ol>}
+      </section>}
+    </div>
+  </section>;
+}
+
 export default function App({ api, signOut }: { api: LibraryApi; signOut?: () => void }) {
   const [route, setRoute] = useState<Route>(routeFromLocation);
   useEffect(() => { const onPop = () => setRoute(routeFromLocation()); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
-  const navigate = useCallback((next: Route) => { const path = next === 'add' ? '/add' : '/'; if (window.location.pathname !== path) window.history.pushState({}, '', path); setRoute(next); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
-  return <Shell route={route} navigate={navigate} signOut={signOut}>{route === 'add' ? <AddBooks navigate={navigate} api={api} /> : <Library navigate={navigate} api={api} />}</Shell>;
+  const navigate = useCallback((next: Route) => { const path = next === 'add' ? '/add' : next === 'scan' ? '/scan' : '/'; if (window.location.pathname !== path) window.history.pushState({}, '', path); setRoute(next); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
+  return <Shell route={route} navigate={navigate} signOut={signOut}>{route === 'add' ? <AddBooks navigate={navigate} api={api} /> : route === 'scan' ? <ScanBooks api={api} /> : <Library navigate={navigate} api={api} />}</Shell>;
 }
