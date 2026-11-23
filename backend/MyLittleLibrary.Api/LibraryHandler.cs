@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Raven.Client.Documents;
@@ -12,7 +13,7 @@ public static class LibraryHandler
     public const long MaxAddRequestBytes = MaxCoverBytes + 64 * 1024;
 
     public static async Task<Results<Ok<CatalogEdition[]>, ValidationProblem, ProblemHttpResult>> SearchCatalog(
-        string? q, OpenLibraryClient catalog, IDocumentStore store, CancellationToken ct)
+        string? q, ClaimsPrincipal user, OpenLibraryClient catalog, IDocumentStore store, CancellationToken ct)
     {
         var query = q?.Trim();
         if (string.IsNullOrEmpty(query) || query.Length > 200)
@@ -26,25 +27,32 @@ public static class LibraryHandler
         }
 
         if (editions.Length == 0) return TypedResults.Ok(editions);
+        var ownerKey = LibraryAuthentication.OwnerKey(user);
         using var session = store.OpenAsyncSession();
-        var saved = await session.LoadAsync<LibraryBook>(editions.Select(e => LibraryBook.DocumentId(e.EditionId)), ct);
-        return TypedResults.Ok(editions.Select(e => e with { AlreadyAdded = saved[LibraryBook.DocumentId(e.EditionId)] is not null }).ToArray());
+        var saved = await session.LoadAsync<LibraryEntry>(editions.Select(e => LibraryEntry.DocumentId(ownerKey, e.EditionId)), ct);
+        return TypedResults.Ok(editions.Select(e => e with { AlreadyAdded = saved[LibraryEntry.DocumentId(ownerKey, e.EditionId)] is not null }).ToArray());
     }
 
-    public static async Task<Ok<IReadOnlyList<GalleryBook>>> GetBooks(IDocumentStore store, CancellationToken cancellationToken)
+    public static async Task<Ok<IReadOnlyList<GalleryBook>>> GetBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();
-        var books = await session.Query<LibraryBook>()
+        var ownerKey = LibraryAuthentication.OwnerKey(user);
+        var entries = await session.Query<LibraryEntry>()
             .Customize(query => query.WaitForNonStaleResults(TimeSpan.FromSeconds(10)))
+            .Where(x => x.OwnerKey == ownerKey)
             .OrderByDescending(x => x.AddedAt)
-            .ThenBy(x => x.EditionId)
+            .ThenBy(x => x.BookId)
             .ToListAsync(cancellationToken);
-        return TypedResults.Ok<IReadOnlyList<GalleryBook>>(books.Select(x => x.ToGallery()).ToArray());
+        if (entries.Count == 0) return TypedResults.Ok<IReadOnlyList<GalleryBook>>([]);
+        var books = await session.LoadAsync<LibraryBook>(entries.Select(x => x.BookId), cancellationToken);
+        return TypedResults.Ok<IReadOnlyList<GalleryBook>>(entries
+            .Where(x => books[x.BookId] is not null).Select(x => x.ToGallery(books[x.BookId])).ToArray());
     }
 
     public static async Task<Results<Ok<GalleryBook>, JsonHttpResult<GalleryBook>, ProblemHttpResult>> AddBook(
         [FromForm] AddLibraryBookRequest input,
         HttpRequest request,
+        ClaimsPrincipal user,
         IDocumentStore store,
         OpenLibraryClient catalog,
         CancellationToken cancellationToken)
@@ -53,64 +61,72 @@ public static class LibraryHandler
         if (!LibraryBook.IsValidEditionId(editionId))
             return TypedResults.Problem("A valid Open Library edition ID is required.", statusCode: 400);
 
-        var documentId = LibraryBook.DocumentId(editionId);
-        using (var checkSession = store.OpenAsyncSession())
-        {
-            var existing = await checkSession.LoadAsync<LibraryBook>(documentId, cancellationToken);
-            if (existing is not null)
-                return TypedResults.Ok(existing.ToGallery());
-        }
-
-        var snapshot = catalog.FindSearchedEdition(editionId);
-        if (snapshot is null)
-            return TypedResults.Problem("Search for this edition again, then add it.", statusCode: 404);
-
-        var cover = input.Cover;
-        var files = request.Form.Files; // Form binding has already read and cached the form.
+        var ownerKey = LibraryAuthentication.OwnerKey(user);
+        var bookId = LibraryBook.DocumentId(editionId);
+        var entryId = LibraryEntry.DocumentId(ownerKey, editionId);
         ValidatedCover? validated = null;
-        if (files.Count > 1 || (files.Count == 1 && cover is null))
-            return TypedResults.Problem("Supply at most one cover image.", statusCode: 400);
-        if (cover is not null)
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            var result = await ValidateCoverAsync(cover, cancellationToken);
-            if (!result.IsValid)
-                return TypedResults.Problem(result.Error, statusCode: result.StatusCode);
-            validated = result.Cover!;
-        }
+            using var session = store.OpenAsyncSession();
+            var entry = await session.LoadAsync<LibraryEntry>(entryId, cancellationToken);
+            var book = await session.LoadAsync<LibraryBook>(bookId, cancellationToken);
+            if (entry is not null)
+            {
+                if (book is not null) return TypedResults.Ok(entry.ToGallery(book));
+                break;
+            }
 
-        using var coverBytes = validated?.Bytes;
-        var book = LibraryBook.From(snapshot.Edition, snapshot.WorkId, validated is not null);
-        using var session = store.OpenAsyncSession();
-        // An empty change vector means the document must not already exist.
-        await session.StoreAsync(book, string.Empty, documentId, cancellationToken);
-        if (validated is not null)
-        {
-            // Keep this stream alive until SaveChangesAsync has consumed it.
-            session.Advanced.Attachments.Store(documentId, LibraryBook.CoverAttachmentName,
-                validated.Bytes, validated.ContentType);
-        }
+            var snapshot = book is null ? catalog.FindSearchedEdition(editionId) : null;
+            if (book is null && snapshot is null)
+                return TypedResults.Problem("Search for this edition again, then add it.", statusCode: 404);
 
-        try
-        {
-            await session.SaveChangesAsync(cancellationToken);
-            return TypedResults.Json(book.ToGallery(), statusCode: StatusCodes.Status201Created);
+            if (attempt == 0)
+            {
+                var files = request.Form.Files; // Form binding has already read and cached the form.
+                if (files.Count > 1 || (files.Count == 1 && input.Cover is null))
+                    return TypedResults.Problem("Supply at most one cover image.", statusCode: 400);
+                if (input.Cover is not null)
+                {
+                    var result = await ValidateCoverAsync(input.Cover, cancellationToken);
+                    if (!result.IsValid)
+                        return TypedResults.Problem(result.Error, statusCode: result.StatusCode);
+                    validated = result.Cover!;
+                }
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            // One atomic batch. Empty change vectors make both writes create-only.
+            if (book is null)
+            {
+                book = LibraryBook.From(snapshot!.Edition, snapshot.WorkId, now);
+                await session.StoreAsync(book, string.Empty, bookId, cancellationToken);
+            }
+            entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = now, HasLocalCover = validated is not null };
+            await session.StoreAsync(entry, string.Empty, entryId, cancellationToken);
+            using var coverBytes = validated is null ? null : new MemoryStream(validated.Bytes, writable: false);
+            if (coverBytes is not null)
+                session.Advanced.Attachments.Store(entryId, LibraryEntry.CoverAttachmentName, coverBytes, validated!.ContentType);
+
+            try
+            {
+                await session.SaveChangesAsync(cancellationToken);
+                return TypedResults.Json(entry.ToGallery(book), statusCode: StatusCodes.Status201Created);
+            }
+            catch (ConcurrencyException)
+            {
+                // Read the winning book/entry in a fresh session before retrying a missing write.
+            }
         }
-        catch (ConcurrencyException)
-        {
-            using var winnerSession = store.OpenAsyncSession();
-            var winner = await winnerSession.LoadAsync<LibraryBook>(documentId, cancellationToken);
-            return winner is null
-                ? TypedResults.Problem("The library write conflicted and could not be read back.", statusCode: 409)
-                : TypedResults.Ok(winner.ToGallery());
-        }
+        return TypedResults.Problem("The library write conflicted and could not be read back.", statusCode: 409);
     }
 
     public static async Task<Results<FileStreamHttpResult, NotFound>> GetCover(
-        string editionId, IDocumentStore store, CancellationToken cancellationToken)
+        string editionId, ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
     {
         if (!LibraryBook.IsValidEditionId(editionId)) return TypedResults.NotFound();
+        var entryId = LibraryEntry.DocumentId(LibraryAuthentication.OwnerKey(user), editionId);
         var attachment = await store.Operations.SendAsync(new GetAttachmentOperation(
-            LibraryBook.DocumentId(editionId), LibraryBook.CoverAttachmentName, AttachmentType.Document, null), token: cancellationToken);
+            entryId, LibraryEntry.CoverAttachmentName, AttachmentType.Document, null), token: cancellationToken);
         if (attachment is null) return TypedResults.NotFound();
         return TypedResults.Stream(attachment.Stream, attachment.Details.ContentType);
     }
@@ -141,14 +157,14 @@ public static class LibraryHandler
         using var decoded = new SKBitmap(codec.Info);
         if (decoded.GetPixels() == IntPtr.Zero || codec.GetPixels(decoded.Info, decoded.GetPixels()) != SKCodecResult.Success)
             return CoverValidationResult.Invalid("The cover is not a complete image.", 400);
-        return CoverValidationResult.Valid(new MemoryStream(image, writable: false), type);
+        return CoverValidationResult.Valid(image, type);
     }
 
     private sealed record CoverValidationResult(ValidatedCover? Cover, string? Error, int StatusCode)
     {
         public bool IsValid => Cover is not null;
-        public static CoverValidationResult Valid(MemoryStream bytes, string contentType) => new(new ValidatedCover(bytes, contentType), null, 200);
+        public static CoverValidationResult Valid(byte[] bytes, string contentType) => new(new ValidatedCover(bytes, contentType), null, 200);
         public static CoverValidationResult Invalid(string error, int statusCode) => new(null, error, statusCode);
     }
-    private sealed record ValidatedCover(MemoryStream Bytes, string ContentType);
+    private sealed record ValidatedCover(byte[] Bytes, string ContentType);
 }

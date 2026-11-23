@@ -1,12 +1,19 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Security.Claims;
 using System.Text;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Raven.Client.Documents;
 using Raven.Embedded;
 using Raven.TestDriver;
@@ -19,17 +26,28 @@ internal sealed class ApiScenario : IAsyncDisposable
     private readonly TestRavenDriver driver = new();
     private readonly ApiFactory factory;
     private HttpClient? client;
+    private readonly bool useLocalIdentity;
 
-    public ApiScenario(params string[] expectedCatalogQueries)
+    public ApiScenario(params string[] expectedCatalogQueries) : this(false, expectedCatalogQueries) { }
+
+    public ApiScenario(bool useLocalIdentity, params string[] expectedCatalogQueries)
     {
         Catalog = new OpenLibraryHandler(expectedCatalogQueries);
         Store = driver.CreateStore();
-        factory = new ApiFactory(Store, Catalog);
+        factory = new ApiFactory(Store, Catalog, useLocalIdentity);
+        this.useLocalIdentity = useLocalIdentity;
     }
 
     public IDocumentStore Store { get; }
     public OpenLibraryHandler Catalog { get; }
-    public HttpClient Client => client ??= factory.CreateClient(new() { AllowAutoRedirect = false });
+    public HttpClient Client => client ??= CreateClient(useLocalIdentity ? null : "Reader");
+
+    public HttpClient CreateClient(string? subject)
+    {
+        var result = factory.CreateClient(new() { AllowAutoRedirect = false });
+        if (subject is not null) result.DefaultRequestHeaders.Add(TestIdentityHandler.SubjectHeader, subject);
+        return result;
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -46,13 +64,25 @@ internal sealed class ApiScenario : IAsyncDisposable
         }
     }
 
-    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog) : WebApplicationFactory<Program>
+    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog, bool useLocalIdentity) : WebApplicationFactory<Program>
     {
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            builder.ConfigureHostConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [HostDefaults.EnvironmentKey] = "Local",
+                ["Auth:EnableLocalDevIdentity"] = "true"
+            }));
+            return base.CreateHost(builder);
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.UseEnvironment("Testing");
             builder.ConfigureTestServices(services =>
             {
+                if (!useLocalIdentity)
+                    services.AddAuthentication(TestIdentityHandler.SchemeName)
+                        .AddScheme<AuthenticationSchemeOptions, TestIdentityHandler>(TestIdentityHandler.SchemeName, _ => { });
                 services.RemoveAll<IDocumentStore>();
                 // Register the externally owned instance without transferring disposal to the host.
                 // Leave the initializer registered so it checks the test database on startup.
@@ -60,6 +90,22 @@ internal sealed class ApiScenario : IAsyncDisposable
                 services.AddHttpClient(nameof(OpenLibraryClient))
                     .ConfigurePrimaryHttpMessageHandler(() => catalog);
             });
+        }
+    }
+
+    // TestServer-only authentication. Does not register or exercise JWT bearer or Auth0.
+    private sealed class TestIdentityHandler(IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        public const string SchemeName = "FixtureIdentity";
+        public const string SubjectHeader = "X-Test-Subject";
+
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Request.Headers.TryGetValue(SubjectHeader, out var subject)) return Task.FromResult(AuthenticateResult.NoResult());
+            var user = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("iss", "urn:mylittlelibrary:tests"), new Claim("sub", subject.ToString())], SchemeName));
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(user, SchemeName)));
         }
     }
 

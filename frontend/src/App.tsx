@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
-  addLibraryBook,
   apiMessage,
-  getLibraryBooks,
-  searchCatalog,
   type CatalogEdition,
   type GalleryBook,
+  type LibraryApi,
 } from './api';
 
 type Route = 'library' | 'add';
@@ -26,7 +24,31 @@ function Cover({ src, title, authors, className = '' }: { src?: string | null; t
   );
 }
 
-function Shell({ route, navigate, children }: { route: Route; navigate: (route: Route) => void; children: ReactNode }) {
+function GalleryCover({ book, api }: { book: GalleryBook; api: LibraryApi }) {
+  const { editionId, title, authors, coverUrl } = book;
+  const isPrivate = coverUrl === `/api/library/books/${editionId}/cover`;
+  const [imageUrl, setImageUrl] = useState<string>();
+
+  useEffect(() => {
+    if (!isPrivate) return;
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    setImageUrl(undefined);
+    void api.getLibraryCover(editionId, controller.signal).then((image) => {
+      if (controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(image);
+      setImageUrl(objectUrl);
+    }).catch(() => { /* Use the existing cover fallback. */ });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [api, editionId, isPrivate]);
+
+  return <Cover src={isPrivate ? imageUrl : coverUrl} title={title} authors={authors} />;
+}
+
+function Shell({ route, navigate, signOut, children }: { route: Route; navigate: (route: Route) => void; signOut?: () => void; children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -36,6 +58,7 @@ function Shell({ route, navigate, children }: { route: Route; navigate: (route: 
         <nav aria-label="Primary navigation">
           <a className={route === 'library' ? 'active' : ''} href="/" onClick={(event) => { event.preventDefault(); navigate('library'); }}>My Library</a>
           <a className={route === 'add' ? 'active' : ''} href="/add" onClick={(event) => { event.preventDefault(); navigate('add'); }}>Add Books</a>
+          {signOut && <button className="button button-secondary" type="button" onClick={signOut}>Sign out</button>}
         </nav>
       </header>
       <main>{children}</main>
@@ -44,15 +67,15 @@ function Shell({ route, navigate, children }: { route: Route; navigate: (route: 
   );
 }
 
-function Library({ navigate }: { navigate: (route: Route) => void }) {
+function Library({ navigate, api }: { navigate: (route: Route) => void; api: LibraryApi }) {
   const [books, setBooks] = useState<GalleryBook[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState('loading');
-    try { setBooks(await getLibraryBooks(signal)); setState('ready'); }
+    try { setBooks(await api.getLibraryBooks(signal)); setState('ready'); }
     catch (error) { if ((error as Error).name !== 'AbortError') setState('error'); }
-  }, []);
+  }, [api]);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
   return <section className="page library-page">
@@ -60,11 +83,11 @@ function Library({ navigate }: { navigate: (route: Route) => void }) {
     {state === 'loading' && <div className="status-panel" role="status"><span className="spinner" />Loading your library…</div>}
     {state === 'error' && <div className="status-panel error" role="alert"><strong>We couldn’t load your library.</strong><span>Check your connection and try again.</span><button className="button button-secondary" type="button" onClick={() => void load()}>Retry</button></div>}
     {state === 'ready' && books.length === 0 && <div className="empty-state"><div className="empty-art"><span>✦</span><span>▱</span><span>✧</span></div><h2>Your shelf is waiting</h2><p>Search the catalog to find your next favorite book, then add it here.</p><button className="button button-primary" type="button" onClick={() => navigate('add')}>Find a book</button></div>}
-    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map((book) => <article className="book-card" key={book.editionId}><Cover src={book.coverUrl} title={book.title} authors={book.authors} /><div className="book-info"><h2>{book.title}</h2><p>{book.authors.join(', ') || 'Unknown author'}</p></div></article>)}</div>}
+    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map((book) => <article className="book-card" key={book.editionId}><GalleryCover book={book} api={api} /><div className="book-info"><h2>{book.title}</h2><p>{book.authors.join(', ') || 'Unknown author'}</p></div></article>)}</div>}
   </section>;
 }
 
-function AddBooks({ navigate }: { navigate: (route: Route) => void }) {
+function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: LibraryApi }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CatalogEdition[]>([]);
   const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -83,12 +106,12 @@ function AddBooks({ navigate }: { navigate: (route: Route) => void }) {
     const request = new AbortController();
     searchRequest.current = request;
     setSearchState('loading'); setMessage('');
-    try { const found = await searchCatalog(value, request.signal); if (!request.signal.aborted) { setResults(found); setSearchState('ready'); } }
+    try { const found = await api.searchCatalog(value, request.signal); if (!request.signal.aborted) { setResults(found); setSearchState('ready'); } }
     catch (error) { if (!request.signal.aborted) { setSearchState('error'); setMessage(apiMessage(error, 'Catalog search is unavailable right now. Please try again.')); } }
   }
   async function add(result: CatalogEdition, file?: File) {
     setAdding(result.editionId); setMessage('');
-    try { await addLibraryBook(result.editionId, file); setAdded((current) => new Set(current).add(result.editionId)); }
+    try { await api.addLibraryBook(result.editionId, file); setAdded((current) => new Set(current).add(result.editionId)); }
     catch (error) { setMessage(apiMessage(error, `Couldn’t add “${result.title}”. Please try again.`)); }
     finally { setAdding(null); }
   }
@@ -132,9 +155,9 @@ function AddBooks({ navigate }: { navigate: (route: Route) => void }) {
   </section>;
 }
 
-export default function App() {
+export default function App({ api, signOut }: { api: LibraryApi; signOut?: () => void }) {
   const [route, setRoute] = useState<Route>(routeFromLocation);
   useEffect(() => { const onPop = () => setRoute(routeFromLocation()); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
   const navigate = useCallback((next: Route) => { const path = next === 'add' ? '/add' : '/'; if (window.location.pathname !== path) window.history.pushState({}, '', path); setRoute(next); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
-  return <Shell route={route} navigate={navigate}>{route === 'add' ? <AddBooks navigate={navigate} /> : <Library navigate={navigate} />}</Shell>;
+  return <Shell route={route} navigate={navigate} signOut={signOut}>{route === 'add' ? <AddBooks navigate={navigate} api={api} /> : <Library navigate={navigate} api={api} />}</Shell>;
 }
