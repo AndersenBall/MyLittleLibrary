@@ -80,14 +80,7 @@ public static class LibraryHandler
             var snapshot = book is null ? catalog.FindSearchedEdition(editionId) : null;
             if (book is null && snapshot is null)
                 return TypedResults.Problem("Search for this edition again, then add it.", statusCode: 404);
-            if (snapshot is not null && metadata is null)
-            {
-                try { metadata = await catalog.GetEditionMetadataAsync(snapshot, cancellationToken); }
-                catch (CatalogUnavailableException ex)
-                {
-                    return TypedResults.Problem(title: ex.Message, statusCode: 503);
-                }
-            }
+            if (snapshot is not null) metadata ??= snapshot.Metadata;
 
             if (attempt == 0)
             {

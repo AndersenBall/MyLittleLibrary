@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,subject,series,first_publish_year,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
+    private const string SearchFields = "key,title,author_name,subject,series,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
 
     private const string SearchResponse = """
         {
@@ -137,7 +137,6 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "author_name": ["J. R. R. Tolkien"],
             "subject": ["Fantasy", "Adventure"],
             "series": ["Middle-earth"],
-            "first_publish_year": 1937,
             "editions": { "docs": [
               {
                 "key": "/books/OL100001M",
@@ -160,24 +159,20 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         }
         """;
 
+    private const string SparseSearchResponse = """
+        {"docs":[{"key":"/works/OL10000W","title":"The Hobbit","editions":{"docs":[{"key":"/books/OL100001M","title":"The Hobbit"}]}}]}
+        """;
+
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
+    private int searchCount;
     public ConcurrentQueue<Uri> Requests { get; } = new();
-    public ConcurrentQueue<Uri> EditionRequests { get; } = new();
     public bool FailSearches { get; set; }
+    public bool ReturnSparseAfterFirstSearch { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = Assert.IsType<Uri>(request.RequestUri);
         Assert.Equal(HttpMethod.Get, request.Method);
-        if (uri.AbsolutePath.StartsWith("/books/", StringComparison.Ordinal))
-        {
-            EditionRequests.Enqueue(uri);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"number_of_pages":300,"publish_date":"2012","series":["The Hobbit editions"]}""", Encoding.UTF8, "application/json")
-            });
-        }
-
         Requests.Enqueue(uri);
         Assert.Equal("https://openlibrary.org/search.json", uri.GetLeftPart(UriPartial.Path));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog request: {uri}");
@@ -188,12 +183,14 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         var fields = Assert.IsType<string>(Assert.Single(query["fields"]));
         Assert.Equal(SearchFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
 
+        var requestNumber = Interlocked.Increment(ref searchCount);
         if (FailSearches)
             throw new HttpRequestException("Simulated Open Library outage.");
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent(SearchResponse, Encoding.UTF8, "application/json")
+            Content = new StringContent(ReturnSparseAfterFirstSearch && requestNumber > 1 ? SparseSearchResponse : SearchResponse,
+                Encoding.UTF8, "application/json")
         });
     }
 }
