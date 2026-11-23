@@ -46,7 +46,7 @@ public static class LibraryHandler
         if (entries.Count == 0) return TypedResults.Ok<IReadOnlyList<GalleryBook>>([]);
         var books = await session.LoadAsync<LibraryBook>(entries.Select(x => x.BookId), cancellationToken);
         return TypedResults.Ok<IReadOnlyList<GalleryBook>>(entries
-            .Where(x => books[x.BookId] is not null).Select(x => x.ToGallery(books[x.BookId])).ToArray());
+            .Where(x => books[x.BookId] is not null).Select(x => books[x.BookId].ToGallery(x)).ToArray());
     }
 
     public static async Task<Results<Ok<GalleryBook>, JsonHttpResult<GalleryBook>, ProblemHttpResult>> AddBook(
@@ -72,7 +72,7 @@ public static class LibraryHandler
             var book = await session.LoadAsync<LibraryBook>(bookId, cancellationToken);
             if (entry is not null)
             {
-                if (book is not null) return TypedResults.Ok(entry.ToGallery(book));
+                if (book is not null) return TypedResults.Ok(book.ToGallery(entry));
                 break;
             }
 
@@ -110,7 +110,7 @@ public static class LibraryHandler
             try
             {
                 await session.SaveChangesAsync(cancellationToken);
-                return TypedResults.Json(entry.ToGallery(book), statusCode: StatusCodes.Status201Created);
+                return TypedResults.Json(book.ToGallery(entry), statusCode: StatusCodes.Status201Created);
             }
             catch (ConcurrencyException)
             {
