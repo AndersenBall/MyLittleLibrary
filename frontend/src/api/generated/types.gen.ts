@@ -5,6 +5,7 @@ export type ClientOptions = {
 };
 
 export type AddLibraryBookRequest = {
+    workId: string;
     editionId: string;
     cover?: Blob | File | null;
 };
@@ -12,7 +13,6 @@ export type AddLibraryBookRequest = {
 export type CatalogEdition = {
     editionId: string;
     title: string;
-    authors: Array<string>;
     publishers: Array<string>;
     publicationDate?: string | null;
     isbn10: Array<string>;
@@ -20,6 +20,19 @@ export type CatalogEdition = {
     coverUrl?: string | null;
     editionUrl: string;
     alreadyAdded: boolean;
+};
+
+export type CatalogEditionPage = {
+    editions: Array<CatalogEdition>;
+    nextOffset?: number | null;
+};
+
+export type CatalogWork = {
+    workId: string;
+    title: string;
+    authors: Array<string>;
+    firstPublicationYear?: number | null;
+    editions: Array<CatalogEdition>;
 };
 
 export type GalleryBook = {
@@ -81,10 +94,51 @@ export type SearchCatalogResponses = {
     /**
      * OK
      */
-    200: Array<CatalogEdition>;
+    200: Array<CatalogWork>;
 };
 
 export type SearchCatalogResponse = SearchCatalogResponses[keyof SearchCatalogResponses];
+
+export type GetCatalogEditionsData = {
+    body?: never;
+    path: {
+        workId: string;
+    };
+    query?: {
+        offset?: number;
+    };
+    url: '/api/catalog/works/{workId}/editions';
+};
+
+export type GetCatalogEditionsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type GetCatalogEditionsError = GetCatalogEditionsErrors[keyof GetCatalogEditionsErrors];
+
+export type GetCatalogEditionsResponses = {
+    /**
+     * OK
+     */
+    200: CatalogEditionPage;
+};
+
+export type GetCatalogEditionsResponse = GetCatalogEditionsResponses[keyof GetCatalogEditionsResponses];
 
 export type GetLibraryBooksData = {
     body?: never;
@@ -145,6 +199,10 @@ export type AddLibraryBookErrors = {
      * Unsupported Media Type
      */
     415: ProblemDetails;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
 };
 
 export type AddLibraryBookError = AddLibraryBookErrors[keyof AddLibraryBookErrors];

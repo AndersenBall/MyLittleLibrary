@@ -28,7 +28,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CatalogEdition"
+                    "$ref": "#/components/schemas/CatalogWork"
                   }
                 }
               }
@@ -40,6 +40,82 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/catalog/works/{workId}/editions": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getCatalogEditions",
+        "parameters": [
+          {
+            "name": "workId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogEditionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -107,6 +183,9 @@
                 "$ref": "#/components/schemas/AddLibraryBookRequest"
               },
               "encoding": {
+                "workId": {
+                  "style": "form"
+                },
                 "editionId": {
                   "style": "form"
                 },
@@ -198,6 +277,16 @@
               }
             }
           },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized"
           }
@@ -280,10 +369,15 @@
     "schemas": {
       "AddLibraryBookRequest": {
         "required": [
-          "editionId"
+          "editionId",
+          "workId"
         ],
         "type": "object",
         "properties": {
+          "workId": {
+            "minLength": 1,
+            "type": "string"
+          },
           "editionId": {
             "minLength": 1,
             "type": "string"
@@ -299,7 +393,6 @@
       "CatalogEdition": {
         "required": [
           "alreadyAdded",
-          "authors",
           "editionId",
           "editionUrl",
           "isbn10",
@@ -314,12 +407,6 @@
           },
           "title": {
             "type": "string"
-          },
-          "authors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           },
           "publishers": {
             "type": "array",
@@ -352,6 +439,61 @@
           },
           "alreadyAdded": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogEditionPage": {
+        "required": [
+          "editions"
+        ],
+        "type": "object",
+        "properties": {
+          "editions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEdition"
+            }
+          },
+          "nextOffset": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CatalogWork": {
+        "required": [
+          "authors",
+          "editions",
+          "title",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "firstPublicationYear": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "editions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEdition"
+            }
           }
         },
         "additionalProperties": false

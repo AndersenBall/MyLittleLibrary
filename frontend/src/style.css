@@ -38,8 +38,8 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .cover-fallback small { color: #d9e5dc; font-size: .72rem; line-height: 1.25; }
 .fallback-mark { align-self: end; margin-bottom: auto; color: #bfd6bf; font-size: .72rem; letter-spacing: .1em; }
 .book-info { padding: 14px 3px 0; }
-.book-info h2, .result-details h2 { margin-bottom: 5px; color: #293c35; font-size: .97rem; line-height: 1.22; }
-.book-info p, .authors { margin: 0; color: #7a837e; font-size: .8rem; line-height: 1.35; }
+.book-info h2 { margin-bottom: 5px; color: #293c35; font-size: .97rem; line-height: 1.22; }
+.book-info p { margin: 0; color: #7a837e; font-size: .8rem; line-height: 1.35; }
 .status-panel { min-height: 145px; padding: 28px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; border: 1px solid #e5e6df; border-radius: 12px; color: #69766f; background: #fbfbf8; text-align: center; }
 .status-panel strong { color: #364a41; }
 .status-panel .button { flex-basis: 100%; margin: 4px auto 0; }
@@ -60,13 +60,29 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .search-hint { max-width: 760px; margin-top: 40px; }
 .hint-icon { display: block; margin-bottom: 13px; color: #bd9672; font-size: 2.5rem; }
 .results-list { max-width: 850px; display: grid; gap: 15px; margin-top: 30px; }
-.result-card { display: flex; gap: 20px; padding: 16px; border: 1px solid #e7e7df; border-radius: 10px; background: #fff; box-shadow: 0 3px 12px rgba(48,62,51,.035); }
+.work-group { border: 1px solid #e7e7df; border-radius: 10px; background: #fff; box-shadow: 0 3px 12px rgba(48,62,51,.035); overflow: hidden; }
+.work-group summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px; color: #293c35; cursor: pointer; list-style: none; }
+.work-group summary::-webkit-details-marker { display: none; }
+.work-group summary > span:first-child { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.work-group summary strong { overflow: hidden; font-family: 'Playfair Display', Georgia, serif; font-size: 1.18rem; text-overflow: ellipsis; white-space: nowrap; }
+.work-group summary small { color: #7a837e; font-size: .78rem; }
+.work-chevron { color: #668477; font-size: 1.3rem; transition: transform .15s; }
+.work-group[open] .work-chevron { transform: rotate(180deg); }
+.work-editions { display: grid; gap: 1px; padding: 0 12px 12px; background: #f4f5f0; }
+.edition-row { display: flex; gap: 16px; padding: 14px; background: #fff; }
+.edition-row:first-of-type { border-start-start-radius: 7px; border-start-end-radius: 7px; }
+.edition-row:last-of-type { border-end-start-radius: 7px; border-end-end-radius: 7px; }
+.edition-row .result-details { padding: 2px 0; }
+.edition-row h3 { margin: 0 0 5px; color: #293c35; font-size: .92rem; line-height: 1.22; }
+.edition-loading { margin: 0; padding: 15px 5px; display: flex; align-items: center; gap: 9px; color: #74807a; font-size: .8rem; }
+.edition-loading [role="alert"] { color: #8b6550; }
+
 .result-cover { flex: 0 0 84px; width: 84px; height: 125px; }
 .result-details { min-width: 0; padding: 4px 0; display: flex; flex-direction: column; align-items: flex-start; }
-.result-details h2 { font-family: 'Playfair Display', Georgia, serif; font-size: 1.18rem; }
+
 .edition-details { margin: 9px 0 16px; color: #8a948d; font-size: .72rem; line-height: 1.45; }
 .result-actions { display: flex; align-items: center; gap: 18px; margin-top: auto; flex-wrap: wrap; }
 .file-label { color: #738178; font-size: .75rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .file-label input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 footer { display: flex; justify-content: space-between; padding: 24px max(24px, calc((100% - 1180px) / 2)); border-top: 1px solid #e6e5dd; color: #9ba29d; font-size: .72rem; }
-@media (max-width: 620px) { .site-header { height: 68px; padding: 0 18px; } nav { gap: 18px; } nav a { font-size: .8rem; } main { width: min(100% - 32px, 1180px); } .page { padding-top: 42px; } .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 32px; } .page-heading .button { align-self: stretch; } h1 { font-size: 2.8rem; } .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 27px 15px; } .search-row { flex-direction: column; } .search-row .button { width: 100%; } .result-card { gap: 14px; padding: 12px; } .result-cover { flex-basis: 68px; width: 68px; height: 102px; } .result-details h2 { font-size: 1rem; } .result-actions { gap: 12px; } footer { padding: 20px 16px; } footer span:last-child { display: none; } }
+@media (max-width: 620px) { .site-header { height: 68px; padding: 0 18px; } nav { gap: 18px; } nav a { font-size: .8rem; } main { width: min(100% - 32px, 1180px); } .page { padding-top: 42px; } .page-heading { align-items: flex-start; flex-direction: column; margin-bottom: 32px; } .page-heading .button { align-self: stretch; } h1 { font-size: 2.8rem; } .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 27px 15px; } .search-row { flex-direction: column; } .search-row .button { width: 100%; } .edition-row { gap: 14px; padding: 12px; } .result-cover { flex-basis: 68px; width: 68px; height: 102px; } .result-actions { gap: 12px; } footer { padding: 20px 16px; } footer span:last-child { display: none; } }

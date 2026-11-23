@@ -73,6 +73,9 @@ app.Use(async (context, next) =>
 app.MapGet("/health", () => Results.Ok());
 app.MapGet("/api/catalog/search", LibraryHandler.SearchCatalog)
     .WithName("searchCatalog").WithTags("Catalog").RequireAuthorization().ProducesProblem(503);
+app.MapGet("/api/catalog/works/{workId}/editions", LibraryHandler.GetCatalogEditions)
+    .WithName("getCatalogEditions").WithTags("Catalog").RequireAuthorization()
+    .ProducesProblem(400).ProducesProblem(404).ProducesProblem(503);
 
 var library = app.MapGroup("/api/library").WithTags("Library").RequireAuthorization();
 library.MapGet("/books", LibraryHandler.GetBooks).WithName("getLibraryBooks");
@@ -87,7 +90,8 @@ library.MapPost("/books", LibraryHandler.AddBook)
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status409Conflict)
     .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
-    .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
+    .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 library.MapGet("/books/{editionId}/cover", LibraryHandler.GetCover)
     .WithName("getLibraryCover")
     .Produces<FileResult>(StatusCodes.Status200OK, "image/jpeg", "image/png", "image/webp");

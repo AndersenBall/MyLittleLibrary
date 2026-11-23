@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -21,6 +21,12 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/catalog/search',
+    ...options
+});
+
+export const getCatalogEditions = <ThrowOnError extends boolean = false>(options: Options<GetCatalogEditionsData, ThrowOnError>): RequestResult<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError> => (options.client ?? client).get<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/catalog/works/{workId}/editions',
     ...options
 });
 

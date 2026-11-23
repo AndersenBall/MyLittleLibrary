@@ -34,7 +34,9 @@ The API creates the `MyLittleLibrary` RavenDB database on startup. RavenDB is re
 
 For Open Library's identified API rate limit, set `MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL` for Compose (or `OpenLibrary__ContactEmail` for a standalone API). Without a valid address the app uses the lower anonymous limit. Hosted cover art can be unavailable independently of the saved metadata. Upload a JPEG, PNG, or WebP up to 5 MiB only if you have permission to keep it; the original bytes are stored on your private shelf entry in RavenDB.
 
-An edition missing from the shared catalog cache must come from a search within the last 15 minutes. If an add returns `404`, run the search again and retry. Each edition has one shared `LibraryBooks/{editionId}` document and each user can have one private `LibraryEntries/{ownerKey}/{editionId}` reference. Repeat adds return the caller's existing entry without changing its cover. Existing book documents and their old uploads are retained, but aren't assigned to anyone's shelf; add a book again to create a private entry. Legacy uploads aren't served.
+Search groups matching editions under their work. Expand a work and scroll to browse its editions one page at a time. For an edition not yet in RavenDB, Add requires a search within the last 15 minutes. The first add verifies the selected edition belongs to the work, then saves the shared `LibraryWorks/{workId}` and every `LibraryBooks/{editionId}` from Open Library in a single transaction with the chosen private `LibraryEntries/{ownerKey}/{editionId}` shelf entry. If any catalog page fails, nothing from that add is saved; try again. Later adds of imported editions do not need Open Library. Repeat adds return the caller's existing entry without changing its cover.
+
+The full-work import model requires a fresh database. There is no migration from the previous edition-only model.
 
 On `realtornow-jeb`, private Tailscale Serve maps [the React app](https://realtornow-jeb.tail69be98.ts.net:8445/) to `127.0.0.1:18081` and [Swagger](https://realtornow-jeb.tail69be98.ts.net:8444/swagger) to `127.0.0.1:18080`.
 
