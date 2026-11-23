@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,subject,series,first_publish_year,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
 
     private const string SearchResponse = """
         {
@@ -135,6 +135,9 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "key": "/works/OL10000W",
             "title": "The Hobbit",
             "author_name": ["J. R. R. Tolkien"],
+            "subject": ["Fantasy", "Adventure"],
+            "series": ["Middle-earth"],
+            "first_publish_year": 1937,
             "editions": { "docs": [
               {
                 "key": "/books/OL100001M",
@@ -142,11 +145,15 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
                 "isbn": ["054792822X", "9780547928227"],
                 "publisher": ["Mariner Books"],
                 "publish_date": ["2012"],
-                "cover_i": 1234
+                "cover_i": 1234,
+                "number_of_pages": 300,
+                "series": ["The Hobbit editions"],
+                "subject": ["Children's books"]
               },
               {
                 "key": "/books/OL100002M",
-                "title": "The Hobbit (illustrated)"
+                "title": "The Hobbit (illustrated)",
+                "number_of_pages": 320
               }
             ] }
           }]
@@ -155,13 +162,23 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
 
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
+    public ConcurrentQueue<Uri> EditionRequests { get; } = new();
     public bool FailSearches { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = Assert.IsType<Uri>(request.RequestUri);
-        Requests.Enqueue(uri);
         Assert.Equal(HttpMethod.Get, request.Method);
+        if (uri.AbsolutePath.StartsWith("/books/", StringComparison.Ordinal))
+        {
+            EditionRequests.Enqueue(uri);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"number_of_pages":300,"publish_date":"2012","series":["The Hobbit editions"]}""", Encoding.UTF8, "application/json")
+            });
+        }
+
+        Requests.Enqueue(uri);
         Assert.Equal("https://openlibrary.org/search.json", uri.GetLeftPart(UriPartial.Path));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog request: {uri}");
         var query = QueryHelpers.ParseQuery(uri.Query);

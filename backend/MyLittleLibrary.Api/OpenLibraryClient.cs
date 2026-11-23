@@ -7,7 +7,10 @@ public sealed record CatalogEdition(string EditionId, string Title, string[] Aut
     string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
     string? CoverUrl, string EditionUrl, bool AlreadyAdded);
 
-public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId);
+// Ingestion-only metadata: keep it out of search/API responses while carrying it to persistence.
+public sealed record EditionMetadata(int? NumberOfPages, int? PublicationYear, string[] Series, string[] Tags);
+
+public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId, EditionMetadata Metadata);
 
 public sealed class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
@@ -16,7 +19,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 {
     private static readonly object SnapshotGate = new();
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromMinutes(15);
-    private const string Fields = "key,title,author_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string Fields = "key,title,author_name,subject,series,first_publish_year,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
 
     public async Task<CatalogEdition[]> SearchAsync(string query, CancellationToken ct)
     {
@@ -40,6 +43,11 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 
                 var authors = Texts(doc, "author_name");
                 if (authors.Length == 0) authors = Texts(work, "author_name");
+                var metadata = new EditionMetadata(
+                    PositiveInt(Property(doc, "number_of_pages")),
+                    PositiveInt(Property(work, "first_publish_year")),
+                    Texts(doc, "series").Concat(Texts(work, "series")).Distinct(StringComparer.Ordinal).ToArray(),
+                    Texts(doc, "subject").Concat(Texts(work, "subject")).Distinct(StringComparer.Ordinal).ToArray());
                 var edition = CreateEdition(id, title, authors, Texts(doc, "publisher"),
                     Texts(doc, "publish_date").FirstOrDefault(), isbns, PositiveInt(Property(doc, "cover_i")));
                 var workId = ReadKey(work, "/works/", WorkIdPattern());
@@ -55,7 +63,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
                         };
                         workId ??= previous.WorkId;
                     }
-                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId), SnapshotLifetime);
+                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId, metadata), SnapshotLifetime);
                 }
                 results.Add(edition);
                 if (results.Count == 12) return [.. results];
@@ -66,6 +74,21 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 
     public EditionSnapshot? FindSearchedEdition(string editionId) =>
         cache.Get<EditionSnapshot>($"edition:{editionId}");
+
+    public async Task<EditionMetadata> GetEditionMetadataAsync(EditionSnapshot snapshot, CancellationToken ct)
+    {
+        using var response = await GetAsync($"books/{snapshot.Edition.EditionId}.json", ct);
+        if (response is null) return snapshot.Metadata;
+
+        var edition = response.RootElement;
+        var publicationYear = ParseYear(Text(edition, "publish_date")) ?? snapshot.Metadata.PublicationYear;
+        return snapshot.Metadata with
+        {
+            NumberOfPages = PositiveInt(Property(edition, "number_of_pages")) ?? snapshot.Metadata.NumberOfPages,
+            PublicationYear = publicationYear,
+            Series = Texts(edition, "series").Concat(snapshot.Metadata.Series).Distinct(StringComparer.Ordinal).ToArray()
+        };
+    }
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken ct)
     {
@@ -118,6 +141,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
     private static string? AsText(JsonElement e) => e.ValueKind == JsonValueKind.String && e.GetString()?.Trim() is { Length: > 0 } text ? text : null;
     private static string? Text(JsonElement obj, string name) => AsText(Property(obj, name));
     private static int? PositiveInt(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var i) && i > 0 ? i : null;
+    private static int? ParseYear(string? value) => value is null ? null :
+        int.TryParse(YearPattern().Match(value).Value, out var year) && year > 0 ? year : null;
     private static IEnumerable<JsonElement> Array(JsonElement obj, params string[] path)
     {
         foreach (var name in path) obj = Property(obj, name);
@@ -132,6 +157,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
     private static partial Regex EditionIdPattern();
     [GeneratedRegex("\\AOL[0-9]{1,15}W\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WorkIdPattern();
+    [GeneratedRegex("\\b[0-9]{4}\\b", RegexOptions.CultureInvariant)]
+    private static partial Regex YearPattern();
 }
 
 public sealed class CatalogRateLimit(bool hasContact)

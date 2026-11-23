@@ -65,6 +65,7 @@ public static class LibraryHandler
         var bookId = LibraryBook.DocumentId(editionId);
         var entryId = LibraryEntry.DocumentId(ownerKey, editionId);
         ValidatedCover? validated = null;
+        EditionMetadata? metadata = null;
         for (var attempt = 0; attempt < 3; attempt++)
         {
             using var session = store.OpenAsyncSession();
@@ -79,6 +80,14 @@ public static class LibraryHandler
             var snapshot = book is null ? catalog.FindSearchedEdition(editionId) : null;
             if (book is null && snapshot is null)
                 return TypedResults.Problem("Search for this edition again, then add it.", statusCode: 404);
+            if (snapshot is not null && metadata is null)
+            {
+                try { metadata = await catalog.GetEditionMetadataAsync(snapshot, cancellationToken); }
+                catch (CatalogUnavailableException ex)
+                {
+                    return TypedResults.Problem(title: ex.Message, statusCode: 503);
+                }
+            }
 
             if (attempt == 0)
             {
@@ -98,7 +107,7 @@ public static class LibraryHandler
             // One atomic batch. Empty change vectors make both writes create-only.
             if (book is null)
             {
-                book = LibraryBook.From(snapshot!.Edition, snapshot.WorkId, now);
+                book = LibraryBook.From(snapshot!.Edition, snapshot.WorkId, metadata!, now);
                 await session.StoreAsync(book, string.Empty, bookId, cancellationToken);
             }
             entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = now, HasLocalCover = validated is not null };

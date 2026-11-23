@@ -36,6 +36,11 @@ public sealed class LibraryFlowTests
         Assert.Equal(TitleQuery, match.Title);
         Assert.Equal(Isbn, Assert.Single(match.Isbn13));
         Assert.False(match.AlreadyAdded);
+        var searchJson = System.Text.Json.JsonSerializer.Serialize(match);
+        Assert.DoesNotContain("numberOfPages", searchJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("publicationYear", searchJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("series", searchJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("tags", searchJson, StringComparison.OrdinalIgnoreCase);
         var withoutIsbn = Assert.Single(editions, edition => edition.EditionId == IllustratedEditionId);
         Assert.Empty(withoutIsbn.Isbn10);
         Assert.Empty(withoutIsbn.Isbn13);
@@ -53,6 +58,11 @@ public sealed class LibraryFlowTests
         Assert.Equal("OL10000W", document.WorkId);
         Assert.Equal(TitleQuery, document.Title);
         Assert.Equal(Isbn, Assert.Single(document.Isbn13));
+        Assert.Equal(300, document.NumberOfPages);
+        Assert.Equal(2012, document.PublicationYear);
+        Assert.Equal(new[] { "The Hobbit editions", "Middle-earth" }, document.Series);
+        Assert.Single(api.Catalog.EditionRequests);
+        Assert.Equal(new[] { "Children's books", "Fantasy", "Adventure" }, document.Tags);
         Assert.Equal(added.AddedAt, document.AddedAt);
 
         var saved = Assert.Single(await ShelfAsync(api.Client));
