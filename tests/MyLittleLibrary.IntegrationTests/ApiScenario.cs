@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -35,13 +34,12 @@ internal sealed class ApiScenario : IAsyncDisposable
     {
         Catalog = new OpenLibraryHandler(expectedCatalogQueries);
         Store = driver.CreateStore();
-        factory = new ApiFactory(Store, Catalog, Clock, useLocalIdentity);
+        factory = new ApiFactory(Store, Catalog, useLocalIdentity);
         this.useLocalIdentity = useLocalIdentity;
     }
 
     public IDocumentStore Store { get; }
     public OpenLibraryHandler Catalog { get; }
-    public TestClock Clock { get; } = new();
     public HttpClient Client => client ??= CreateClient(useLocalIdentity ? null : "Reader");
 
     public HttpClient CreateClient(string? subject)
@@ -66,13 +64,7 @@ internal sealed class ApiScenario : IAsyncDisposable
         }
     }
 
-    internal sealed class TestClock : Microsoft.Extensions.Internal.ISystemClock
-    {
-        public TimeSpan Elapsed { get; set; }
-        public DateTimeOffset UtcNow => DateTimeOffset.UtcNow + Elapsed;
-    }
-
-    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog, TestClock clock, bool useLocalIdentity) : WebApplicationFactory<Program>
+    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog, bool useLocalIdentity) : WebApplicationFactory<Program>
     {
         protected override IHost CreateHost(IHostBuilder builder)
         {
@@ -95,7 +87,6 @@ internal sealed class ApiScenario : IAsyncDisposable
                 // Register the externally owned instance without transferring disposal to the host.
                 // Leave the initializer registered so it checks the test database on startup.
                 services.AddSingleton(store);
-                services.Configure<MemoryCacheOptions>(options => options.Clock = clock);
                 services.AddHttpClient(nameof(OpenLibraryClient))
                     .ConfigurePrimaryHttpMessageHandler(() => catalog);
             });
@@ -136,7 +127,8 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,subject,series_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
     public string[][] EditionPages { get; set; } = [["OL100001M", "OL100002M"]];
@@ -154,6 +146,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "/search.json" => Search(uri),
             "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
             "/works/OL10000W/editions.json" => Editions(uri),
+            "/works/OL999W.json" or "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
         });
     }
@@ -162,16 +155,26 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     {
         var query = QueryHelpers.ParseQuery(uri.Query);
         Assert.Equal(3, query.Count);
-        Assert.Equal("12", Assert.Single(query["limit"]));
+        var search = Assert.IsType<string>(Assert.Single(query["q"]));
         var fields = Assert.IsType<string>(Assert.Single(query["fields"]));
+        if (search == "key:/works/OL10000W")
+        {
+            Assert.Equal("1", Assert.Single(query["limit"]));
+            Assert.Equal(WorkMetadataFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
+            return Json("""
+            { "docs": [{ "key": "/works/OL10000W", "author_name": ["J. R. R. Tolkien"],
+              "subject": ["Fantasy", "Adventure"], "series_name": ["Middle-earth"], "first_publish_year": 1937 }] }
+            """);
+        }
+        Assert.Equal("12", Assert.Single(query["limit"]));
         Assert.Equal(SearchFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog search: {uri}");
-        Assert.Equal(expected, Assert.Single(query["q"]));
+        Assert.Equal(expected, search);
         if (FailSearches) throw new HttpRequestException("Simulated Open Library outage.");
         return Json("""
         { "docs": [{
           "key": "/works/OL10000W", "title": "The Hobbit", "author_name": ["J. R. R. Tolkien"],
-          "subject": ["Fantasy", "Adventure"], "series_name": ["Middle-earth"], "first_publish_year": 1937,
+          "first_publish_year": 1937,
           "editions": { "docs": [
             { "key": "/books/OL100001M", "title": "The Hobbit", "isbn": ["054792822X", "9780547928227"],
               "publisher": ["Mariner Books"], "publish_date": ["2012"], "cover_i": 1234 },
@@ -200,7 +203,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             {
                 var docs = string.Join(',', page.Select(id => id switch
                 {
-                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "publish_date": "2012", "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
+                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "publish_date": "2012", "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
                     "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "publish_date": "May 2015" }""",
                     _ => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (paperback)" }"""
                 }));

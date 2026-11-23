@@ -34,15 +34,16 @@ public static class LibraryHandler
         string workId, int? offset, ClaimsPrincipal user, OpenLibraryClient catalog, IDocumentStore store, CancellationToken ct)
     {
         if (offset < 0) return TypedResults.Problem("The edition offset must not be negative.", statusCode: 400);
-        if (catalog.FindSearchedWork(workId) is not { } snapshot)
-            return TypedResults.Problem("Search for this work again to see its editions.", statusCode: 404);
+        if (!LibraryWork.IsValidWorkId(workId))
+            return TypedResults.Problem("A valid Open Library work ID is required.", statusCode: 400);
 
-        CatalogEditionPage page;
-        try { page = await catalog.BrowseEditionPageAsync(snapshot, offset ?? 0, ct); }
+        CatalogEditionPage? page;
+        try { page = await catalog.BrowseEditionPageAsync(workId, offset ?? 0, ct); }
         catch (CatalogUnavailableException ex)
         {
             return TypedResults.Problem(title: ex.Message, statusCode: 503);
         }
+        if (page is null) return TypedResults.Problem("Open Library could not find this work.", statusCode: 404);
         var added = await LoadAddedEditionsAsync(page.Editions, user, store, ct);
         return TypedResults.Ok(page with { Editions = MarkAdded(page.Editions, added) });
     }
@@ -119,9 +120,6 @@ public static class LibraryHandler
             }
             if (book is null && importError is not null)
                 return TypedResults.Problem(title: importError, statusCode: 503);
-            var snapshot = book is null && import is null ? catalog.FindSearchedEdition(editionId) : null;
-            if (book is null && import is null && snapshot?.Work.WorkId != workId)
-                return TypedResults.Problem("Search for this edition again, then add it.", statusCode: 404);
 
             if (!coverChecked)
             {
@@ -141,18 +139,16 @@ public static class LibraryHandler
             // One atomic batch. Empty change vectors make every write create-only.
             if (book is null)
             {
-                try { import ??= await catalog.FetchWorkAsync(snapshot!, cancellationToken); }
+                try { import ??= await catalog.FetchWorkAsync(workId, cancellationToken); }
                 catch (CatalogUnavailableException ex)
                 {
                     // Another request may have imported the book while this provider request failed.
                     importError = ex.Message;
                     continue;
                 }
+                if (import is null) return TypedResults.Problem("Open Library could not find this work.", statusCode: 404);
                 if (!import.Editions.Any(e => e.EditionId == editionId))
-                {
-                    importError = "Open Library did not include the selected edition. Try again shortly.";
-                    continue;
-                }
+                    return TypedResults.Problem("This edition does not belong to the selected work.", statusCode: 404);
                 work = import.Work;
                 await session.StoreAsync(work, string.Empty, workDocumentId, cancellationToken);
                 foreach (var edition in import.Editions)

@@ -16,5 +16,4 @@ public sealed class LibraryWork
 public sealed record CatalogWork(string WorkId, string Title, string[] Authors, int? FirstPublicationYear,
     CatalogEdition[] Editions);
 
-internal sealed record SearchedWork(CatalogWork Work, string[] Subjects, string[] Series, DateTimeOffset ExpiresAt);
 internal sealed record WorkImport(LibraryWork Work, CatalogEdition[] Editions);

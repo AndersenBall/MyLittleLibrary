@@ -15,7 +15,6 @@ builder.Services.AddSwaggerGen(options =>
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
     options.OperationFilter<LibraryAuthorizationOperationFilter>();
 });
-builder.Services.AddMemoryCache();
 builder.AddLibraryAuthentication();
 builder.AddRavenDb();
 var contact = builder.Configuration["OpenLibrary:ContactEmail"]?.Trim();

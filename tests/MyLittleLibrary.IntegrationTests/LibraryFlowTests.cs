@@ -43,8 +43,7 @@ public sealed class LibraryFlowTests
         var added = await AddAsync(api.Client, IllustratedId);
         Assert.Equal(IllustratedId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
         Assert.Equal(Author, Assert.Single(added.Authors));
-        Assert.Equal(["/works/OL10000W.json", "/works/OL10000W/editions.json?limit=100&offset=0",
-            "/works/OL10000W/editions.json?limit=100&offset=2"], api.Catalog.Requests.Skip(1).Select(x => x.PathAndQuery));
+        AssertImportRequests(api.Catalog.Requests.Skip(1));
         Assert.Equal(5, await DocumentCountAsync(api));
         using (var session = api.Store.OpenAsyncSession())
         {
@@ -57,7 +56,7 @@ public sealed class LibraryFlowTests
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, e => Assert.Equal(WorkId, e.WorkId));
             var original = Assert.Single(editions, e => e.EditionId == EditionId);
-            Assert.Equal("054792822X", Assert.Single(original.Isbn10)); // Preserved from search.
+            Assert.Equal("054792822X", Assert.Single(original.Isbn10));
             Assert.Equal(Isbn, Assert.Single(original.Isbn13));
             Assert.Equal("2012", original.PublicationDate);
             Assert.Equal("May 2015", Assert.Single(editions, e => e.EditionId == IllustratedId).PublicationDate);
@@ -68,67 +67,53 @@ public sealed class LibraryFlowTests
             Assert.Null(sparse.PublicationDate);
         }
 
-        // The sibling wasn't indexed by search and the cache has now expired anyway.
-        api.Clock.Elapsed = TimeSpan.FromMinutes(16);
+        // The sibling was never returned to the browser.
         await AddAsync(api.Client, PaperbackId);
         Assert.Equal([IllustratedId, PaperbackId], (await ShelfAsync(api.Client)).Select(e => e.EditionId).Order(StringComparer.Ordinal));
         using var mismatch = await PostAsync(api.Client, PaperbackId, workId: "OL999W");
         Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
         Assert.Equal(6, await DocumentCountAsync(api));
-        Assert.Equal(4, api.Catalog.Requests.Count);
+        Assert.Equal(5, api.Catalog.Requests.Count);
     }
 
     [Fact]
-    public async Task BrowseRequestsOnlyOnePageAtATimeAndIndexesTheEditionsItReturns()
+    public async Task BrowseRequestsOnePageAtATimeWithoutAPriorSearch()
     {
-        await using var api = new ApiScenario(Title);
+        await using var api = new ApiScenario();
         api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
-        using var uncached = await api.Client.GetAsync(EditionsPath, Ct);
-        Assert.Equal(HttpStatusCode.NotFound, uncached.StatusCode);
-        Assert.Empty(api.Catalog.Requests);
-        await SearchAsync(api.Client, Title);
 
         using var firstResponse = await api.Client.GetAsync(EditionsPath, Ct);
         var first = await ReadAsync<CatalogEditionPage>(firstResponse, HttpStatusCode.OK);
         Assert.Equal([EditionId, IllustratedId], first.Editions.Select(e => e.EditionId));
         Assert.Equal(2, first.NextOffset);
         Assert.Equal("?limit=25&offset=0", api.Catalog.Requests.Last().Query);
-        Assert.Equal(2, api.Catalog.Requests.Count);
+        Assert.Single(api.Catalog.Requests);
         using var secondResponse = await api.Client.GetAsync($"{EditionsPath}?offset={first.NextOffset}", Ct);
         var second = await ReadAsync<CatalogEditionPage>(secondResponse, HttpStatusCode.OK);
         Assert.Equal(PaperbackId, Assert.Single(second.Editions).EditionId);
         Assert.Null(second.NextOffset);
         Assert.Equal("?limit=25&offset=2", api.Catalog.Requests.Last().Query);
-        Assert.Equal(3, api.Catalog.Requests.Count);
+        Assert.Equal(2, api.Catalog.Requests.Count);
         Assert.Equal(0, await DocumentCountAsync(api));
 
         await AddAsync(api.Client, PaperbackId);
-        Assert.Equal(["/works/OL10000W.json", "/works/OL10000W/editions.json?limit=100&offset=0",
-            "/works/OL10000W/editions.json?limit=100&offset=2"], api.Catalog.Requests.Skip(3).Select(x => x.PathAndQuery));
+        AssertImportRequests(api.Catalog.Requests.Skip(2));
         Assert.Equal(PaperbackId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
     }
 
     [Fact]
-    public async Task UnimportedEditionsRequireARecentSearchAndBrowsingDoesNotExtendIt()
+    public async Task MissingWorksReturnNotFoundAndInvalidRequestsDoNotReachTheProvider()
     {
-        await using var api = new ApiScenario(Title);
-        api.Catalog.EditionPages = [[EditionId, IllustratedId, PaperbackId]];
-        using var beforeSearch = await PostAsync(api.Client, EditionId);
-        Assert.Equal(HttpStatusCode.NotFound, beforeSearch.StatusCode);
+        await using var api = new ApiScenario();
+        using var invalidWork = await PostAsync(api.Client, EditionId, workId: "invalid");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidWork.StatusCode);
+        using var invalidOffset = await api.Client.GetAsync($"{EditionsPath}?offset=-1", Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidOffset.StatusCode);
         Assert.Empty(api.Catalog.Requests);
-        await SearchAsync(api.Client, Title);
-
-        api.Clock.Elapsed = TimeSpan.FromMinutes(14);
-        using var browsed = await api.Client.GetAsync(EditionsPath, Ct);
-        Assert.Equal(HttpStatusCode.OK, browsed.StatusCode);
-        api.Clock.Elapsed = TimeSpan.FromMinutes(16);
-        using var expired = await api.Client.GetAsync(EditionsPath, Ct);
-        Assert.Equal(HttpStatusCode.NotFound, expired.StatusCode);
-        foreach (var id in new[] { EditionId, PaperbackId })
-        {
-            using var rejected = await PostAsync(api.Client, id);
-            Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
-        }
+        using var missingWork = await PostAsync(api.Client, EditionId, workId: "OL999W");
+        Assert.Equal(HttpStatusCode.NotFound, missingWork.StatusCode);
+        using var missingEditions = await api.Client.GetAsync("/api/catalog/works/OL999W/editions", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, missingEditions.StatusCode);
         Assert.Equal(2, api.Catalog.Requests.Count);
         Assert.Equal(0, await DocumentCountAsync(api));
     }
@@ -136,10 +121,9 @@ public sealed class LibraryFlowTests
     [Fact]
     public async Task FailedEditionPageLeavesNoWritesAndCanBeRetried()
     {
-        await using var api = new ApiScenario(Title);
+        await using var api = new ApiScenario();
         api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
         api.Catalog.FailEditionOffset = 2;
-        await SearchAsync(api.Client, Title);
         using var failed = await PostAsync(api.Client, EditionId, Png);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
         Assert.Equal("?limit=100&offset=2", api.Catalog.Requests.Last().Query);
@@ -148,6 +132,7 @@ public sealed class LibraryFlowTests
 
         api.Catalog.FailEditionOffset = null;
         var added = await AddAsync(api.Client, EditionId, Png);
+        AssertImportRequests(api.Catalog.Requests.Skip(4));
         Assert.Equal(5, await DocumentCountAsync(api));
         await AssertCoverAsync(api.Client, added, Png);
     }
@@ -159,9 +144,9 @@ public sealed class LibraryFlowTests
         api.Catalog.EditionPages = [[IllustratedId]];
         await SearchAsync(api.Client, Title);
         using var rejected = await PostAsync(api.Client, EditionId);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejected.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
         Assert.Equal(0, await DocumentCountAsync(api));
-        Assert.Equal(3, api.Catalog.Requests.Count);
+        Assert.Equal(4, api.Catalog.Requests.Count);
     }
 
     [Fact]
@@ -240,8 +225,7 @@ public sealed class LibraryFlowTests
     [Fact]
     public async Task LocalIdentityIsFixedAndDoesNotUseRequestHeaders()
     {
-        await using var api = new ApiScenario(true, Title);
-        await SearchAsync(api.Client, Title);
+        await using var api = new ApiScenario(true);
         await AddAsync(api.Client, EditionId);
         using var spoofed = api.CreateClient("different-identity");
         spoofed.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-a-token");
@@ -288,6 +272,12 @@ public sealed class LibraryFlowTests
 
     private static async Task<long> DocumentCountAsync(ApiScenario api) =>
         (await api.Store.Maintenance.SendAsync(new GetStatisticsOperation(), Ct)).CountOfDocuments;
+
+    private static void AssertImportRequests(IEnumerable<Uri> requests) => Assert.Collection(requests,
+        uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
+        uri => Assert.Equal("/search.json", uri.AbsolutePath), // The fixture verifies the exact work-key projection.
+        uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
+        uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery));
 
     private static async Task AssertCoverAsync(HttpClient client, GalleryBook book, byte[] bytes)
     {

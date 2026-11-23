@@ -1,26 +1,24 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Caching.Memory;
 
 public sealed class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
 
-public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cache, CatalogRateLimit rateLimit)
+public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
-    private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromMinutes(15);
-    private const string Fields = "key,title,author_name,subject,series_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
 
     public async Task<CatalogWork[]> SearchAsync(string query, CancellationToken ct)
     {
         var isbn = ParseIsbn(query);
         var providerQuery = isbn is null ? query : $"isbn:{isbn}";
-        using var response = await GetAsync($"search.json?q={Uri.EscapeDataString(providerQuery)}&limit=12&fields={Fields}", ct);
-        if (response is null || Property(response.RootElement, "docs") is not { ValueKind: JsonValueKind.Array } docs)
-            throw new CatalogUnavailableException();
+        using var response = await SearchDocumentsAsync(providerQuery, limit: 12, SearchFields, ct);
+        var docs = response.RootElement.GetProperty("docs");
 
         var results = new List<CatalogWork>();
-        var expires = DateTimeOffset.UtcNow + SnapshotLifetime;
+
         foreach (var work in docs.EnumerateArray())
         {
             if (ReadKey(work, "/works/", WorkIdPattern()) is not { } workId || Text(work, "title") is not { } title)
@@ -32,64 +30,61 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
                 editions.TryAdd(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
                     Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
             }
-            var match = new CatalogWork(workId, title, Texts(work, "author_name"),
-                PositiveInt(Property(work, "first_publish_year")), [.. editions.Values]);
-            var snapshot = new SearchedWork(match, Texts(work, "subject"), Texts(work, "series_name"), expires);
-            cache.Set($"work:{workId}", snapshot, expires);
-            IndexEditions(snapshot, match.Editions);
-            results.Add(match);
+            results.Add(new(workId, title, Texts(work, "author_name"),
+                PositiveInt(Property(work, "first_publish_year")), [.. editions.Values]));
         }
         return [.. results];
     }
 
-    internal SearchedWork? FindSearchedEdition(string editionId) => cache.Get<SearchedWork>($"edition:{editionId}");
-
-    internal SearchedWork? FindSearchedWork(string workId) => cache.Get<SearchedWork>($"work:{workId}");
-
-    internal async Task<CatalogEditionPage> BrowseEditionPageAsync(SearchedWork snapshot, int offset, CancellationToken ct)
+    internal async Task<CatalogEditionPage?> BrowseEditionPageAsync(string workId, int offset, CancellationToken ct)
     {
-        var matches = snapshot.Work.Editions.ToDictionary(x => x.EditionId, StringComparer.Ordinal);
-        var (total, editions) = await FetchEditionPageAsync(snapshot.Work, matches, offset, limit: 25, ct);
-        // An expanded result may be selected, but browsing doesn't renew the search TTL.
-        IndexEditions(snapshot, editions);
+        if (await FetchEditionPageAsync(workId, offset, limit: 25, ct) is not { } page) return null;
+        var (total, editions) = page;
         var next = offset + editions.Length;
         return new(editions, next < total ? next : null);
     }
 
-    internal async Task<WorkImport> FetchWorkAsync(SearchedWork snapshot, CancellationToken ct)
+    internal async Task<WorkImport?> FetchWorkAsync(string workId, CancellationToken ct)
     {
-        var search = snapshot.Work;
-        using var response = await GetAsync($"works/{search.WorkId}.json", ct);
-        if (response is null || Text(response.RootElement, "key") != $"/works/{search.WorkId}" ||
+        var key = $"/works/{workId}";
+        using var response = await GetAsync($"works/{workId}.json", ct);
+        if (response is null) return null;
+        if (Text(response.RootElement, "key") != key ||
             Text(response.RootElement, "title") is not { } title)
             throw new CatalogUnavailableException();
         var details = response.RootElement;
+        // The work document links to authors by ID; one exact-key projection resolves display names.
+        using var projection = await SearchDocumentsAsync($"key:{key}", limit: 1, WorkMetadataFields, ct);
+        var metadata = projection.RootElement.GetProperty("docs").EnumerateArray()
+            .FirstOrDefault(doc => Text(doc, "key") == key);
         var work = new LibraryWork
         {
-            WorkId = search.WorkId,
+            WorkId = workId,
             Title = title,
-            Authors = search.Authors, // Work details contain author references, not display names.
-            Subjects = Texts(details, "subjects").Union(snapshot.Subjects).ToArray(),
-            Series = Texts(details, "series").Union(snapshot.Series).ToArray(),
-            FirstPublicationYear = ParseYear(Text(details, "first_publish_date")) ?? search.FirstPublicationYear
+            Authors = Texts(metadata, "author_name"),
+            Subjects = Texts(details, "subjects").Union(Texts(metadata, "subject")).ToArray(),
+            Series = Texts(details, "series").Union(Texts(metadata, "series_name")).ToArray(),
+            FirstPublicationYear = ParseYear(Text(details, "first_publish_date")) ?? PositiveInt(Property(metadata, "first_publish_year"))
         };
-        return new(work, await FetchAllEditionsAsync(search, ct));
+        return new(work, await FetchAllEditionsAsync(workId, ct));
     }
 
-    private void IndexEditions(SearchedWork snapshot, CatalogEdition[] editions)
+    private async Task<JsonDocument> SearchDocumentsAsync(string query, int limit, string fields, CancellationToken ct)
     {
-        foreach (var edition in editions)
-            cache.Set($"edition:{edition.EditionId}", snapshot, snapshot.ExpiresAt);
+        var response = await GetAsync($"search.json?q={Uri.EscapeDataString(query)}&limit={limit}&fields={fields}", ct);
+        if (response is not null && Property(response.RootElement, "docs").ValueKind == JsonValueKind.Array)
+            return response;
+        response?.Dispose();
+        throw new CatalogUnavailableException();
     }
 
-    private async Task<CatalogEdition[]> FetchAllEditionsAsync(CatalogWork work, CancellationToken ct)
+    private async Task<CatalogEdition[]> FetchAllEditionsAsync(string workId, CancellationToken ct)
     {
-        var matches = work.Editions.ToDictionary(x => x.EditionId, StringComparer.Ordinal);
         var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
         int? total = null;
         for (var offset = 0; total is null || offset < total;)
         {
-            var (count, page) = await FetchEditionPageAsync(work, matches, offset, limit: 100, ct);
+            var (count, page) = await FetchEditionPageAsync(workId, offset, limit: 100, ct) ?? throw new CatalogUnavailableException();
             if (total is not null && count != total) throw new CatalogUnavailableException();
             total = count;
             foreach (var edition in page)
@@ -100,11 +95,11 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
         return [.. editions.Values];
     }
 
-    private async Task<(int Total, CatalogEdition[] Editions)> FetchEditionPageAsync(CatalogWork work,
-        Dictionary<string, CatalogEdition> matches, int offset, int limit, CancellationToken ct)
+    private async Task<(int Total, CatalogEdition[] Editions)?> FetchEditionPageAsync(string workId, int offset, int limit, CancellationToken ct)
     {
-        using var response = await GetAsync($"works/{work.WorkId}/editions.json?limit={limit}&offset={offset}", ct);
-        if (response is null || Property(response.RootElement, "size") is not { ValueKind: JsonValueKind.Number } size ||
+        using var response = await GetAsync($"works/{workId}/editions.json?limit={limit}&offset={offset}", ct);
+        if (response is null) return null;
+        if (Property(response.RootElement, "size") is not { ValueKind: JsonValueKind.Number } size ||
             !size.TryGetInt32(out var count) || count < 0 ||
             Property(response.RootElement, "entries") is not { ValueKind: JsonValueKind.Array } page ||
             page.GetArrayLength() > Math.Min(limit, Math.Max(0, count - offset)) || (page.GetArrayLength() == 0 && offset < count))
@@ -115,19 +110,10 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
         {
             if (ReadKey(doc, "/books/", EditionIdPattern()) is not { } id || editions.ContainsKey(id))
                 throw new CatalogUnavailableException();
-            matches.TryGetValue(id, out var match);
-            var publishers = Texts(doc, "publishers");
-            var edition = CreateEdition(id, Text(doc, "title") ?? match?.Title ?? work.Title,
-                publishers.Length > 0 ? publishers : match?.Publishers ?? [],
-                Text(doc, "publish_date") ?? match?.PublicationDate,
+            editions.Add(id, CreateEdition(id, Text(doc, "title") ?? "Untitled edition", Texts(doc, "publishers"),
+                Text(doc, "publish_date"),
                 Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")),
-                Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue));
-            editions.Add(id, match is null ? edition : edition with
-            {
-                Isbn10 = edition.Isbn10.Union(match.Isbn10).ToArray(),
-                Isbn13 = edition.Isbn13.Union(match.Isbn13).ToArray(),
-                CoverUrl = edition.CoverUrl ?? match.CoverUrl
-            });
+                Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue)));
         }
         return (count, [.. editions.Values]);
     }
