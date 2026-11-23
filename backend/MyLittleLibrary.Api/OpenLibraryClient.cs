@@ -3,10 +3,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 
-public sealed record CatalogEdition(string EditionId, string Title, string[] Authors,
-    string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
-    string? CoverUrl, string EditionUrl, bool AlreadyAdded);
-
 public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId, int? PublicationYear, string[] Series, string[] Tags);
 
 public sealed class CatalogUnavailableException(Exception? inner = null)

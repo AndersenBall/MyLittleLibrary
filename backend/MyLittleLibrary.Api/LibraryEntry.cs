@@ -1,3 +1,6 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc;
+
 public sealed class LibraryEntry
 {
     public const string CoverAttachmentName = "cover";
@@ -7,7 +10,14 @@ public sealed class LibraryEntry
     public bool HasLocalCover { get; init; }
 
     public static string DocumentId(string ownerKey, string editionId) => $"LibraryEntries/{ownerKey}/{editionId}";
+}
 
-    public GalleryBook ToGallery(LibraryBook book) => new(book.EditionId, book.Title, book.Authors,
-        HasLocalCover ? $"/api/library/books/{book.EditionId}/cover" : book.CoverUrl, AddedAt);
+public sealed class AddLibraryBookRequest
+{
+    [FromForm(Name = "editionId")]
+    [Required]
+    public string EditionId { get; set; } = "";
+
+    [FromForm(Name = "cover")]
+    public IFormFile? Cover { get; set; }
 }

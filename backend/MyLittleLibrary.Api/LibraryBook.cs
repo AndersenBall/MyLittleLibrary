@@ -19,6 +19,9 @@ public sealed class LibraryBook
 
     public static string DocumentId(string editionId) => "LibraryBooks/" + editionId;
     public static bool IsValidEditionId(string editionId) => Regex.IsMatch(editionId, "\\AOL[0-9]{1,15}M\\z", RegexOptions.CultureInvariant);
+    public GalleryBook ToGallery(LibraryEntry entry) => new(EditionId, Title, Authors,
+        entry.HasLocalCover ? $"/api/library/books/{EditionId}/cover" : CoverUrl, entry.AddedAt);
+
     public static LibraryBook From(EditionSnapshot snapshot, DateTimeOffset addedAt) => new()
     {
         EditionId = snapshot.Edition.EditionId, WorkId = snapshot.WorkId, Title = snapshot.Edition.Title,
@@ -29,3 +32,9 @@ public sealed class LibraryBook
         EditionUrl = snapshot.Edition.EditionUrl, AddedAt = addedAt
     };
 }
+
+public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
+
+public sealed record CatalogEdition(string EditionId, string Title, string[] Authors,
+    string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
+    string? CoverUrl, string EditionUrl, bool AlreadyAdded);
