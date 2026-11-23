@@ -33,13 +33,15 @@ internal sealed class ApiScenario : IAsyncDisposable
     public ApiScenario(bool useLocalIdentity, params string[] expectedCatalogQueries)
     {
         Catalog = new OpenLibraryHandler(expectedCatalogQueries);
+        Scan = new OpenAiHandler();
         Store = driver.CreateStore();
-        factory = new ApiFactory(Store, Catalog, useLocalIdentity);
+        factory = new ApiFactory(Store, Catalog, Scan, useLocalIdentity);
         this.useLocalIdentity = useLocalIdentity;
     }
 
     public IDocumentStore Store { get; }
     public OpenLibraryHandler Catalog { get; }
+    public OpenAiHandler Scan { get; }
     public HttpClient Client => client ??= CreateClient(useLocalIdentity ? null : "Reader");
 
     public HttpClient CreateClient(string? subject)
@@ -59,19 +61,21 @@ internal sealed class ApiScenario : IAsyncDisposable
         finally
         {
             Catalog.Dispose();
+            Scan.Dispose();
             // TestDriver deletes this scenario's database; its embedded server is shared by the test process.
             driver.Dispose();
         }
     }
 
-    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog, bool useLocalIdentity) : WebApplicationFactory<Program>
+    private sealed class ApiFactory(IDocumentStore store, OpenLibraryHandler catalog, OpenAiHandler scan, bool useLocalIdentity) : WebApplicationFactory<Program>
     {
         protected override IHost CreateHost(IHostBuilder builder)
         {
             builder.ConfigureHostConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 [HostDefaults.EnvironmentKey] = "Local",
-                ["Auth:EnableLocalDevIdentity"] = "true"
+                ["Auth:EnableLocalDevIdentity"] = "true",
+                ["OpenAI:ApiKey"] = "test-key"
             }));
             return base.CreateHost(builder);
         }
@@ -89,6 +93,8 @@ internal sealed class ApiScenario : IAsyncDisposable
                 services.AddSingleton(store);
                 services.AddHttpClient(nameof(OpenLibraryClient))
                     .ConfigurePrimaryHttpMessageHandler(() => catalog);
+                services.AddHttpClient("OpenAI")
+                    .ConfigurePrimaryHttpMessageHandler(() => scan);
             });
         }
     }

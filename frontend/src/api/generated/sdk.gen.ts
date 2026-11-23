@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, ScanLibraryBooksData, ScanLibraryBooksErrors, ScanLibraryBooksResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -38,6 +38,17 @@ export const addLibraryBook = <ThrowOnError extends boolean = false>(options?: O
     headers: {
         'Content-Type': null,
         ...options?.headers
+    }
+});
+
+export const scanLibraryBooks = <ThrowOnError extends boolean = false>(options: Options<ScanLibraryBooksData, ThrowOnError>): RequestResult<ScanLibraryBooksResponses, ScanLibraryBooksErrors, ThrowOnError> => (options.client ?? client).post<ScanLibraryBooksResponses, ScanLibraryBooksErrors, ThrowOnError>({
+    ...formDataBodySerializer,
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/library/books/scan',
+    ...options,
+    headers: {
+        'Content-Type': null,
+        ...options.headers
     }
 });
 

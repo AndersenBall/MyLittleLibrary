@@ -41,7 +41,7 @@ export default function HostedApp() {
 
   return <Auth0Provider domain={domain} clientId={clientId}
     authorizationParams={{ redirect_uri: window.location.origin, audience }}
-    onRedirectCallback={(state) => window.history.replaceState({}, '', state?.returnTo === '/add' ? '/add' : '/')}>
+    onRedirectCallback={(state) => window.history.replaceState({}, '', state?.returnTo === '/add' || state?.returnTo === '/scan' ? state.returnTo : '/')}>
     <SignedInApp />
   </Auth0Provider>;
 }
