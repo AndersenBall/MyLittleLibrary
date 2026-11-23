@@ -6,6 +6,12 @@ RUN dotnet restore MyLittleLibrary.Api/MyLittleLibrary.Api.csproj
 COPY . .
 RUN dotnet publish MyLittleLibrary.Api/MyLittleLibrary.Api.csproj -c Release -o /app/publish --no-restore
 
+# Development image used only by compose.dev.yaml for dotnet watch.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS development
+WORKDIR /src
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+
 # Run on the ASP.NET Core 10 runtime.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
