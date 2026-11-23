@@ -1,0 +1,8 @@
+services:
+  api:
+    environment:
+      DOTNET_ENVIRONMENT: Local
+      Auth__EnableLocalDevIdentity: "true"
+  frontend:
+    environment:
+      VITE_LOCAL_DEV_AUTH: "true"

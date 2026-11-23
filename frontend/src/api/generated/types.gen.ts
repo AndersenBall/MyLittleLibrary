@@ -66,6 +66,10 @@ export type SearchCatalogErrors = {
      */
     400: HttpValidationProblemDetails;
     /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
      * Service Unavailable
      */
     503: ProblemDetails;
@@ -89,6 +93,13 @@ export type GetLibraryBooksData = {
     url: '/api/library/books';
 };
 
+export type GetLibraryBooksErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+};
+
 export type GetLibraryBooksResponses = {
     /**
      * OK
@@ -110,6 +121,10 @@ export type AddLibraryBookErrors = {
      * Bad Request
      */
     400: ProblemDetails;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
     /**
      * Forbidden
      */
@@ -157,6 +172,10 @@ export type GetLibraryCoverData = {
 };
 
 export type GetLibraryCoverErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
     /**
      * Not Found
      */

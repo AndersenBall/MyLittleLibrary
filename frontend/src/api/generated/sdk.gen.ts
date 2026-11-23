@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, GetLibraryCoverData, GetLibraryCoverErrors, GetLibraryCoverResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -18,12 +18,21 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({ url: '/api/catalog/search', ...options });
+export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/catalog/search',
+    ...options
+});
 
-export const getLibraryBooks = <ThrowOnError extends boolean = false>(options?: Options<GetLibraryBooksData, ThrowOnError>): RequestResult<GetLibraryBooksResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetLibraryBooksResponses, unknown, ThrowOnError>({ url: '/api/library/books', ...options });
+export const getLibraryBooks = <ThrowOnError extends boolean = false>(options?: Options<GetLibraryBooksData, ThrowOnError>): RequestResult<GetLibraryBooksResponses, GetLibraryBooksErrors, ThrowOnError> => (options?.client ?? client).get<GetLibraryBooksResponses, GetLibraryBooksErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/library/books',
+    ...options
+});
 
 export const addLibraryBook = <ThrowOnError extends boolean = false>(options?: Options<AddLibraryBookData, ThrowOnError>): RequestResult<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError> => (options?.client ?? client).post<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError>({
     ...formDataBodySerializer,
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/library/books',
     ...options,
     headers: {
@@ -32,6 +41,10 @@ export const addLibraryBook = <ThrowOnError extends boolean = false>(options?: O
     }
 });
 
-export const getLibraryCover = <ThrowOnError extends boolean = false>(options: Options<GetLibraryCoverData, ThrowOnError>): RequestResult<GetLibraryCoverResponses, GetLibraryCoverErrors, ThrowOnError> => (options.client ?? client).get<GetLibraryCoverResponses, GetLibraryCoverErrors, ThrowOnError>({ url: '/api/library/books/{editionId}/cover', ...options });
+export const getLibraryCover = <ThrowOnError extends boolean = false>(options: Options<GetLibraryCoverData, ThrowOnError>): RequestResult<GetLibraryCoverResponses, GetLibraryCoverErrors, ThrowOnError> => (options.client ?? client).get<GetLibraryCoverResponses, GetLibraryCoverErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/library/books/{editionId}/cover',
+    ...options
+});
 
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });

@@ -19,6 +19,9 @@ public sealed class LibraryFlowTests
     private static readonly byte[] Png = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQLd0AAAHdATsQfYP1AAAAAElFTkSuQmCC");
 
+    private static readonly byte[] OtherPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQWfAfAAJ/AbTRw0zcAAAAAElFTkSuQmCC");
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -79,12 +82,12 @@ public sealed class LibraryFlowTests
         using var accepted = await api.Client.PostAsync(BooksPath, afterSearch, Ct);
         var added = await ReadAsync<GalleryBook>(accepted, HttpStatusCode.Created);
         Assert.Equal(EditionId, added.EditionId);
-        Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Equal(2, await DocumentCountAsync(api));
         Assert.Single(api.Catalog.Requests);
     }
 
     [Fact]
-    public async Task ConcurrentAddsReturnTheSameBookAndSaveOneDocument()
+    public async Task ConcurrentAddsByTheSameOwnerReturnOneEntry()
     {
         await using var api = new ApiScenario(TitleQuery);
         await SearchAsync(api.Client, TitleQuery);
@@ -103,7 +106,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(EditionId, added.EditionId);
         Assert.Equal(EditionId, duplicate.EditionId);
         Assert.Equal(added.AddedAt, duplicate.AddedAt);
-        Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Equal(2, await DocumentCountAsync(api));
         Assert.Single(api.Catalog.Requests);
     }
 
@@ -122,7 +125,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
         using var session = api.Store.OpenAsyncSession();
         Assert.Null(await session.LoadAsync<LibraryBook>("LibraryBooks/" + IllustratedEditionId, Ct));
-        Assert.Equal(1, await DocumentCountAsync(api));
+        Assert.Equal(2, await DocumentCountAsync(api));
         Assert.Single(api.Catalog.Requests);
     }
 
@@ -147,13 +150,121 @@ public sealed class LibraryFlowTests
         Assert.Equal(added.CoverUrl, saved.CoverUrl);
         await AssertCoverAsync(api.Client, saved);
 
-        using var repeat = BookForm(EditionId);
+        using var repeat = BookForm(EditionId, OtherPng);
         using var response = await api.Client.PostAsync(BooksPath, repeat, Ct);
         var duplicate = await ReadAsync<GalleryBook>(response, HttpStatusCode.OK);
         Assert.Equal(EditionId, duplicate.EditionId);
         Assert.Equal(added.AddedAt, duplicate.AddedAt);
         Assert.Equal(added.CoverUrl, duplicate.CoverUrl);
+        await AssertCoverAsync(api.Client, duplicate);
         Assert.Equal(callsAfterOutage, api.Catalog.Requests.Count);
+    }
+
+    [Fact]
+    public async Task AnonymousRequestsAreRejectedBeforeFormBindingOrCatalogAccessButHealthIsPublic()
+    {
+        await using var api = new ApiScenario();
+        using var anonymous = api.CreateClient(null);
+        using var search = await anonymous.GetAsync(SearchPath(TitleQuery), Ct);
+        using var gallery = await anonymous.GetAsync(BooksPath, Ct);
+        using var add = await anonymous.PostAsync(BooksPath, null, Ct);
+        using var cover = await anonymous.GetAsync($"{BooksPath}/{EditionId}/cover", Ct);
+        using var health = await anonymous.GetAsync("/health", Ct);
+        Assert.All(new[] { search, gallery, add, cover }, response => Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode));
+        Assert.Equal(HttpStatusCode.OK, health.StatusCode);
+        Assert.Empty(api.Catalog.Requests);
+        Assert.Equal(0, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task TwoOwnersShareOneBookButNotEntriesAddedStatusOrUploads()
+    {
+        await using var api = new ApiScenario(TitleQuery, TitleQuery, TitleQuery);
+        // These identities differ only by case; Raven document IDs themselves are case-insensitive.
+        using var other = api.CreateClient("reader");
+        await SearchAsync(api.Client, TitleQuery);
+        using var firstForm = BookForm(EditionId, Png);
+        using var secondForm = BookForm(EditionId, OtherPng);
+        var responses = await Task.WhenAll(api.Client.PostAsync(BooksPath, firstForm, Ct), other.PostAsync(BooksPath, secondForm, Ct));
+        using var first = responses[0];
+        using var second = responses[1];
+        var firstBook = await ReadAsync<GalleryBook>(first, HttpStatusCode.Created);
+        var secondBook = await ReadAsync<GalleryBook>(second, HttpStatusCode.Created);
+        Assert.Equal(firstBook.EditionId, secondBook.EditionId);
+        Assert.Equal(3, await DocumentCountAsync(api));
+        using (var session = api.Store.OpenAsyncSession())
+        {
+            var sharedBookId = $"LibraryBooks/{EditionId}";
+            var shared = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(sharedBookId, Ct));
+            Assert.Empty(session.Advanced.Attachments.GetNames(shared));
+            var entries = (await session.Advanced.LoadStartingWithAsync<LibraryEntry>("LibraryEntries/", token: Ct)).ToArray();
+            Assert.Equal(2, entries.Length);
+            Assert.Equal(2, entries.Select(entry => entry.OwnerKey).Distinct().Count());
+            Assert.All(entries, entry =>
+            {
+                Assert.Equal(sharedBookId, entry.BookId);
+                Assert.Equal($"LibraryEntries/{entry.OwnerKey}/{EditionId}", session.Advanced.GetDocumentId(entry));
+                Assert.Equal("cover", Assert.Single(session.Advanced.Attachments.GetNames(entry)).Name);
+            });
+        }
+
+        using var firstOnlyForm = BookForm(IllustratedEditionId, Png);
+        using var firstOnly = await api.Client.PostAsync(BooksPath, firstOnlyForm, Ct);
+        Assert.Equal(HttpStatusCode.Created, firstOnly.StatusCode);
+        Assert.Equal(new[] { EditionId, IllustratedEditionId }, (await ShelfAsync(api.Client)).Select(book => book.EditionId).Order());
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(other)).EditionId);
+        Assert.All(await SearchAsync(api.Client, TitleQuery), book => Assert.True(book.AlreadyAdded));
+        Assert.All(await SearchAsync(other, TitleQuery), book => Assert.Equal(book.EditionId == EditionId, book.AlreadyAdded));
+        Assert.Equal(firstBook.CoverUrl, secondBook.CoverUrl);
+        await AssertCoverAsync(api.Client, firstBook);
+        await AssertCoverAsync(other, secondBook, OtherPng);
+        using var hidden = await other.GetAsync($"{BooksPath}/{IllustratedEditionId}/cover", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+    }
+
+    [Fact]
+    public async Task LegacyBookAndAttachmentArePreservedButNoOwnerIsInferred()
+    {
+        await using var api = new ApiScenario();
+        var bookId = $"LibraryBooks/{EditionId}";
+        string? etag;
+        using (var seed = api.Store.OpenAsyncSession())
+        using (var bytes = new MemoryStream(Png))
+        {
+            var legacyBook = new LibraryBook { EditionId = EditionId, Title = "Legacy metadata", CoverUrl = "https://covers.openlibrary.org/b/id/1234-M.jpg" };
+            await seed.StoreAsync(legacyBook, bookId, Ct);
+            seed.Advanced.Attachments.Store(bookId, "cover", bytes, "image/png");
+            await seed.SaveChangesAsync(Ct);
+            using var readBack = api.Store.OpenAsyncSession();
+            etag = readBack.Advanced.GetChangeVectorFor(Assert.IsType<LibraryBook>(await readBack.LoadAsync<LibraryBook>(bookId, Ct)));
+        }
+        Assert.Empty(await ShelfAsync(api.Client));
+        using var form = BookForm(EditionId);
+        using var added = await api.Client.PostAsync(BooksPath, form, Ct);
+        var entry = await ReadAsync<GalleryBook>(added, HttpStatusCode.Created);
+        Assert.Equal("Legacy metadata", entry.Title);
+        Assert.Equal("https://covers.openlibrary.org/b/id/1234-M.jpg", entry.CoverUrl);
+        using var hidden = await api.Client.GetAsync($"{BooksPath}/{EditionId}/cover", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        Assert.Empty(api.Catalog.Requests);
+        Assert.Equal(2, await DocumentCountAsync(api));
+        using var verify = api.Store.OpenAsyncSession();
+        var shared = Assert.IsType<LibraryBook>(await verify.LoadAsync<LibraryBook>(bookId, Ct));
+        Assert.Equal(etag, verify.Advanced.GetChangeVectorFor(shared));
+        Assert.Equal("cover", Assert.Single(verify.Advanced.Attachments.GetNames(shared)).Name);
+    }
+
+    [Fact]
+    public async Task LocalIdentityIsFixedAndDoesNotUseRequestHeaders()
+    {
+        await using var api = new ApiScenario(true, TitleQuery);
+        await SearchAsync(api.Client, TitleQuery);
+        using var form = BookForm(EditionId);
+        using var added = await api.Client.PostAsync(BooksPath, form, Ct);
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var spoofed = api.CreateClient("different-identity");
+        spoofed.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-a-token");
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(spoofed)).EditionId);
     }
 
     private static string SearchPath(string query) => $"/api/catalog/search?q={Uri.EscapeDataString(query)}";
@@ -191,12 +302,13 @@ public sealed class LibraryFlowTests
         return form;
     }
 
-    private static async Task AssertCoverAsync(HttpClient client, GalleryBook book)
+    private static async Task AssertCoverAsync(HttpClient client, GalleryBook book, byte[]? expectedBytes = null)
     {
         Assert.Equal($"{BooksPath}/{book.EditionId}/cover", book.CoverUrl);
         using var response = await client.GetAsync(book.CoverUrl, Ct);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("image/png", response.Content.Headers.ContentType?.MediaType);
-        Assert.Equal(Png, await response.Content.ReadAsByteArrayAsync(Ct));
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        Assert.Equal(expectedBytes ?? Png, await response.Content.ReadAsByteArrayAsync(Ct));
     }
 }

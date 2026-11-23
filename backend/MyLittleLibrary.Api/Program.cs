@@ -1,5 +1,8 @@
 using System.Net.Mail;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.OpenApi;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 const string addLibraryBook = "addLibraryBook";
 
@@ -9,8 +12,11 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.SupportNonNullableReferenceTypes();
     options.NonNullableReferenceTypesAsRequired();
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
+    options.OperationFilter<LibraryAuthorizationOperationFilter>();
 });
 builder.Services.AddMemoryCache();
+builder.AddLibraryAuthentication();
 builder.AddRavenDb();
 var contact = builder.Configuration["OpenLibrary:ContactEmail"]?.Trim();
 if (!MailAddress.TryCreate(contact, out var address) || address.Address != contact ||
@@ -28,6 +34,14 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    if (context.GetEndpoint()?.Metadata.GetMetadata<IAuthorizeData>() is not null)
+        context.Response.Headers.CacheControl = "private, no-store";
+    await next(context);
+});
+app.UseAuthentication();
+app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     // Run before the endpoint delegate reads and binds the multipart form.
@@ -58,15 +72,15 @@ app.Use(async (context, next) =>
 
 app.MapGet("/health", () => Results.Ok());
 app.MapGet("/api/catalog/search", LibraryHandler.SearchCatalog)
-    .WithName("searchCatalog").WithTags("Catalog").ProducesProblem(503);
+    .WithName("searchCatalog").WithTags("Catalog").RequireAuthorization().ProducesProblem(503);
 
-var library = app.MapGroup("/api/library").WithTags("Library");
+var library = app.MapGroup("/api/library").WithTags("Library").RequireAuthorization();
 library.MapGet("/books", LibraryHandler.GetBooks).WithName("getLibraryBooks");
 library.MapPost("/books", LibraryHandler.AddBook)
     .WithName(addLibraryBook)
     .Accepts<AddLibraryBookRequest>("multipart/form-data")
     .WithMetadata(new RequestSizeLimitAttribute(LibraryHandler.MaxAddRequestBytes))
-    .DisableAntiforgery() // Anonymous, with cross-site browser requests rejected above.
+    .DisableAntiforgery() // No cookie authentication; cross-site browser requests are also rejected above.
     .Produces<GalleryBook>(StatusCodes.Status201Created)
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -81,3 +95,15 @@ library.MapGet("/books/{editionId}/cover", LibraryHandler.GetCover)
 app.Run();
 
 public partial class Program { }
+
+internal sealed class LibraryAuthorizationOperationFilter : IOperationFilter
+{
+    public void Apply(OpenApiOperation operation, OperationFilterContext context)
+    {
+        if (!context.ApiDescription.ActionDescriptor.EndpointMetadata.OfType<IAuthorizeData>().Any()) return;
+
+        operation.Security = [new() { [new OpenApiSecuritySchemeReference("Bearer", context.Document)] = [] }];
+        operation.Responses ??= new();
+        operation.Responses.TryAdd("401", new OpenApiResponse { Description = "Unauthorized" });
+    }
+}
