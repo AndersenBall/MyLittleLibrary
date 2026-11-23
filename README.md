@@ -10,6 +10,13 @@ Together, these technologies provide a React-based client, a .NET application la
 
 The API foundation is an ASP.NET Core Minimal API targeting .NET 10.
 
+## Backend architecture
+
+- **Keep [`Program.cs`](backend/MyLittleLibrary.Api/Program.cs) as the API map.** Define every route there, including its HTTP method, path, authorization, and OpenAPI metadata. Map it directly to a named handler. Keep middleware order visible, but put middleware implementation in its own file.
+- **Put request handling and business logic in handlers.** Handlers validate inputs, enforce business rules, coordinate persistence and external calls, and return HTTP results. For example, `POST /api/library/books` maps directly to [`LibraryHandler.AddBook`](backend/MyLittleLibrary.Api/LibraryHandler.cs), which validates and saves the book.
+- **Keep dependency injection wiring readable.** Put new application-specific registrations, factories, and options setup in a focused extension next to the dependency. Call the extension from `Program.cs` rather than defining the setup inline. Use [`AddRavenDb()`](backend/MyLittleLibrary.Api/RavenDbExtensions.cs) as the pattern; simple framework registrations can stay visible.
+- **Keep the request flow one layer deep.** Prefer `route → handler`; let handlers use RavenDB and concrete clients directly. Extract a focused helper or integration client only when it has a clear job. Don’t add service or repository layers just to pass calls through.
+
 ## Run locally with Docker
 
 From the repository root:
