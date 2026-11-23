@@ -1,6 +1,4 @@
-using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Mvc;
 
 public sealed class LibraryBook
 {
@@ -33,16 +31,6 @@ public sealed class LibraryBook
         PublicationYear = snapshot.PublicationYear, Series = snapshot.Series, Tags = snapshot.Tags,
         EditionUrl = snapshot.Edition.EditionUrl, AddedAt = addedAt
     };
-}
-
-public sealed class AddLibraryBookRequest
-{
-    [FromForm(Name = "editionId")]
-    [Required]
-    public string EditionId { get; set; } = "";
-
-    [FromForm(Name = "cover")]
-    public IFormFile? Cover { get; set; }
 }
 
 public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
