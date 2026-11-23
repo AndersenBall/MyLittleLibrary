@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
     private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
@@ -169,16 +169,22 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         Assert.Equal("12", Assert.Single(query["limit"]));
         Assert.Equal(SearchFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog search: {uri}");
-        Assert.Equal(expected, search);
+        Assert.EndsWith(" language:eng", search, StringComparison.Ordinal);
+        Assert.Equal(expected, search[..^" language:eng".Length]);
         if (FailSearches) throw new HttpRequestException("Simulated Open Library outage.");
         return Json("""
         { "docs": [{
           "key": "/works/OL10000W", "title": "The Hobbit", "author_name": ["J. R. R. Tolkien"],
           "first_publish_year": 1937,
           "editions": { "docs": [
-            { "key": "/books/OL100001M", "title": "The Hobbit", "isbn": ["054792822X", "9780547928227"],
+            { "key": "/books/OL100001M", "title": "The Hobbit", "language": ["eng"], "isbn": ["054792822X", "9780547928227"],
               "publisher": ["Mariner Books"], "publish_date": ["2012"], "cover_i": 1234 },
-            { "key": "/books/OL100002M", "title": "The Hobbit (illustrated)" }
+            { "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "language": ["/languages/eng"] },
+            { "key": "/books/OL100004M", "title": "The Hobbit (French)", "language": ["fre"] }
+          ] }
+        }, {
+          "key": "/works/OL10001W", "title": "French-only work", "editions": { "docs": [
+            { "key": "/books/OL100005M", "title": "French edition", "language": ["fre"] }
           ] }
         }] }
         """);

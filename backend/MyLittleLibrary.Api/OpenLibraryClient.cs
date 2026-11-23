@@ -7,13 +7,14 @@ public sealed class CatalogUnavailableException(Exception? inner = null)
 
 public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
-    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
+    private const string SearchLanguageFilter = "language:eng";
     private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
 
     public async Task<CatalogWork[]> SearchAsync(string query, CancellationToken ct)
     {
         var isbn = ParseIsbn(query);
-        var providerQuery = isbn is null ? query : $"isbn:{isbn}";
+        var providerQuery = $"{(isbn is null ? query : $"isbn:{isbn}")} {SearchLanguageFilter}";
         using var response = await SearchDocumentsAsync(providerQuery, limit: 12, SearchFields, ct);
         var docs = response.RootElement.GetProperty("docs");
 
@@ -26,12 +27,13 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
             foreach (var doc in Array(work, "editions", "docs"))
             {
-                if (ReadKey(doc, "/books/", EditionIdPattern()) is not { } id) continue;
+                if (!IsEnglishEdition(doc) || ReadKey(doc, "/books/", EditionIdPattern()) is not { } id) continue;
                 editions.TryAdd(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
                     Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
             }
-            results.Add(new(workId, title, Texts(work, "author_name"),
-                PositiveInt(Property(work, "first_publish_year")), [.. editions.Values]));
+            if (editions.Count > 0)
+                results.Add(new(workId, title, Texts(work, "author_name"),
+                    PositiveInt(Property(work, "first_publish_year")), [.. editions.Values]));
         }
         return [.. results];
     }
@@ -182,6 +184,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     }
     private static string[] Texts(JsonElement obj, string name) => Text(obj, name) is { } single
         ? [single] : Array(obj, name).Select(AsText).OfType<string>().Distinct().ToArray();
+    private static bool IsEnglishEdition(JsonElement edition) => Texts(edition, "language")
+        .Any(language => language is "eng" or "/languages/eng");
     private static string? ReadKey(JsonElement obj, string prefix, Regex pattern) =>
         Text(obj, "key") is { } key && key.StartsWith(prefix, StringComparison.Ordinal) && pattern.IsMatch(key[prefix.Length..])
             ? key[prefix.Length..] : null;
