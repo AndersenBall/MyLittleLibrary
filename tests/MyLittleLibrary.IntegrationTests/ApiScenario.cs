@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,subject,series_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
 
     private const string SearchResponse = """
         {
@@ -135,6 +135,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "key": "/works/OL10000W",
             "title": "The Hobbit",
             "author_name": ["J. R. R. Tolkien"],
+            "subject": ["Fantasy", "Adventure"],
+            "series_name": ["Middle-earth"],
             "editions": { "docs": [
               {
                 "key": "/books/OL100001M",
@@ -160,8 +162,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = Assert.IsType<Uri>(request.RequestUri);
-        Requests.Enqueue(uri);
         Assert.Equal(HttpMethod.Get, request.Method);
+        Requests.Enqueue(uri);
         Assert.Equal("https://openlibrary.org/search.json", uri.GetLeftPart(UriPartial.Path));
         Assert.True(pendingQueries.TryDequeue(out var expected), $"Unexpected catalog request: {uri}");
         var query = QueryHelpers.ParseQuery(uri.Query);

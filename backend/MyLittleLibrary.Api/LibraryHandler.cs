@@ -98,7 +98,7 @@ public static class LibraryHandler
             // One atomic batch. Empty change vectors make both writes create-only.
             if (book is null)
             {
-                book = LibraryBook.From(snapshot!.Edition, snapshot.WorkId, now);
+                book = LibraryBook.From(snapshot!, now);
                 await session.StoreAsync(book, string.Empty, bookId, cancellationToken);
             }
             entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = now, HasLocalCover = validated is not null };
