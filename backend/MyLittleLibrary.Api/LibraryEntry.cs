@@ -14,6 +14,10 @@ public sealed class LibraryEntry
 
 public sealed class AddLibraryBookRequest
 {
+    [FromForm(Name = "workId")]
+    [Required]
+    public string WorkId { get; set; } = "";
+
     [FromForm(Name = "editionId")]
     [Required]
     public string EditionId { get; set; } = "";

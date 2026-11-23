@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import {
   apiMessage,
   type CatalogEdition,
+  type CatalogWork,
   type GalleryBook,
   type LibraryApi,
 } from './api';
@@ -13,12 +14,12 @@ function routeFromLocation(): Route {
   return window.location.pathname === '/add' ? 'add' : 'library';
 }
 
-function Cover({ src, title, authors, className = '' }: { src?: string | null; title: string; authors: string[]; className?: string }) {
+function Cover({ src, title, authors, className = '', lazy = false }: { src?: string | null; title: string; authors: string[]; className?: string; lazy?: boolean }) {
   const [broken, setBroken] = useState(!src);
   useEffect(() => setBroken(!src), [src]);
   return (
     <div className={`cover ${className}`}>
-      {!broken && <img src={src!} alt={`Cover of ${title}`} onError={() => setBroken(true)} />}
+      {!broken && <img src={src!} loading={lazy ? 'lazy' : undefined} alt={`Cover of ${title}`} onError={() => setBroken(true)} />}
       {broken && <div className="cover-fallback" aria-label={`No cover available for ${title}`}><span className="fallback-mark">ML</span><strong>{title}</strong><small>{authors.join(', ') || 'Unknown author'}</small></div>}
     </div>
   );
@@ -87,9 +88,72 @@ function Library({ navigate, api }: { navigate: (route: Route) => void; api: Lib
   </section>;
 }
 
+function WorkResult({ work, api, renderEdition }: { work: CatalogWork; api: LibraryApi; renderEdition: (edition: CatalogEdition, authors: string[]) => ReactNode }) {
+  const request = useRef<AbortController | null>(null);
+  const loadMore = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [editions, setEditions] = useState(work.editions);
+  const [nextOffset, setNextOffset] = useState<number | null>(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => request.current?.abort(), []);
+
+  const loadEditions = useCallback(async () => {
+    if (request.current || nextOffset === null) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true); setError('');
+    try {
+      const page = await api.getCatalogEditions(work.workId, nextOffset, controller.signal);
+      if (controller.signal.aborted) return;
+      setEditions(current => {
+        const byId = new Map(current.map(edition => [edition.editionId, edition]));
+        for (const edition of page.editions) byId.set(edition.editionId, edition);
+        return [...byId.values()];
+      });
+      setNextOffset(page.nextOffset ?? null);
+    } catch (error) {
+      if (!controller.signal.aborted) setError(apiMessage(error, 'Couldn’t load more editions.'));
+    } finally {
+      if (!controller.signal.aborted) { request.current = null; setLoading(false); }
+    }
+  }, [api, nextOffset, work.workId]);
+
+  useEffect(() => {
+    const button = loadMore.current;
+    if (!open || loading || error || !button) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void loadEditions();
+    });
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [open, loading, error, loadEditions]);
+
+  return <details className="work-group" onToggle={(event) => {
+    const expanded = event.currentTarget.open;
+    setOpen(expanded);
+    if (expanded && nextOffset === 0 && !error) void loadEditions();
+  }}>
+    <summary>
+      <span><strong>{work.title}</strong><small>{[work.authors.join(', ') || 'Unknown author', work.firstPublicationYear,
+        nextOffset === null ? `${editions.length} edition${editions.length === 1 ? '' : 's'}` : 'View editions'].filter(Boolean).join(' · ')}</small></span>
+      <span className="work-chevron" aria-hidden="true">⌄</span>
+    </summary>
+    <div className="work-editions">
+      {nextOffset === null && editions.length === 0 && <p className="edition-loading">Open Library has no editions for this work.</p>}
+      {editions.map(edition => renderEdition(edition, work.authors))}
+      {loading && <p className="edition-loading" role="status"><span className="spinner" />Loading editions…</p>}
+      {nextOffset !== null && !loading && <div className="edition-loading">
+        {error && <span role="alert">{error}</span>}
+        <button ref={loadMore} className="button button-secondary" type="button" onClick={() => void loadEditions()}>{error ? 'Retry' : 'Load more editions'}</button>
+      </div>}
+    </div>
+  </details>;
+}
+
 function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: LibraryApi }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<CatalogEdition[]>([]);
+  const [results, setResults] = useState<CatalogWork[]>([]);
   const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const searchRequest = useRef<AbortController | null>(null);
@@ -109,9 +173,9 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     try { const found = await api.searchCatalog(value, request.signal); if (!request.signal.aborted) { setResults(found); setSearchState('ready'); } }
     catch (error) { if (!request.signal.aborted) { setSearchState('error'); setMessage(apiMessage(error, 'Catalog search is unavailable right now. Please try again.')); } }
   }
-  async function add(result: CatalogEdition, file?: File) {
+  async function add(workId: string, result: CatalogEdition, file?: File) {
     setAdding(result.editionId); setMessage('');
-    try { await api.addLibraryBook(result.editionId, file); setAdded((current) => new Set(current).add(result.editionId)); }
+    try { await api.addLibraryBook(workId, result.editionId, file); setAdded((current) => new Set(current).add(result.editionId)); }
     catch (error) { setMessage(apiMessage(error, `Couldn’t add “${result.title}”. Please try again.`)); }
     finally { setAdding(null); }
   }
@@ -124,22 +188,21 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     {searchState === 'ready' && results.length === 0 && <div className="status-panel"><strong>No books found.</strong><span>Try a different title, author, or ISBN.</span></div>}
     {searchState === 'error' && <div className="status-panel error" role="alert"><strong>Search failed.</strong><span>{message}</span><button className="button button-secondary" type="button" onClick={() => void submit()}>Retry</button></div>}
     {searchState === 'ready' && results.length > 0 && <div className="results-list">
-      {results.map((result) => {
+      {results.map(work => <WorkResult key={work.workId} work={work} api={api} renderEdition={(result, authors) => {
         const id = result.editionId;
         const isAdded = result.alreadyAdded || added.has(id);
         const cover = pendingCovers[id];
         const isbn = result.isbn13?.[0] ?? result.isbn10?.[0];
-        return <article className="result-card" key={id}>
-          <Cover src={result.coverUrl} title={result.title} authors={result.authors} className="result-cover" />
+        return <article className="edition-row" key={id}>
+          <Cover src={result.coverUrl} title={result.title} authors={authors} className="result-cover" lazy />
           <div className="result-details">
-            <h2>{result.title}</h2>
-            <p className="authors">{result.authors.join(', ') || 'Unknown author'}</p>
+            <h3>{result.title}</h3>
             <p className="edition-details">
               {[result.publicationDate, result.publishers[0], isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
               <a href={result.editionUrl} target="_blank" rel="noreferrer">Open Library edition</a>
             </p>
             <div className="result-actions">
-              <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(result, cover)}>
+              <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result, cover)}>
                 {adding === id ? 'Adding…' : isAdded ? '✓ Added' : 'Add to Library'}
               </button>
               {!isAdded && <label className="file-label">Use my own cover<input type="file" accept="image/jpeg,image/png,image/webp" disabled={adding !== null} onChange={(event) => {
@@ -150,7 +213,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
             {!isAdded && cover && <p className="edition-details">{cover.name} <button type="button" disabled={adding !== null} onClick={() => setPendingCovers((current) => ({ ...current, [id]: undefined }))}>Remove cover</button></p>}
           </div>
         </article>;
-      })}
+      }} />)}
     </div>}
   </section>;
 }

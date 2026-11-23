@@ -1,68 +1,122 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Caching.Memory;
-
-public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId, int? PublicationYear, string[] Series, string[] Tags);
 
 public sealed class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
 
-public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cache, CatalogRateLimit rateLimit)
+public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
-    private static readonly object SnapshotGate = new();
-    private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromMinutes(15);
-    private const string Fields = "key,title,author_name,subject,series_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
+    private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
 
-    public async Task<CatalogEdition[]> SearchAsync(string query, CancellationToken ct)
+    public async Task<CatalogWork[]> SearchAsync(string query, CancellationToken ct)
     {
         var isbn = ParseIsbn(query);
         var providerQuery = isbn is null ? query : $"isbn:{isbn}";
-        using var response = await GetAsync($"search.json?q={Uri.EscapeDataString(providerQuery)}&limit=12&fields={Fields}", ct);
-        if (response is null || Property(response.RootElement, "docs") is not { ValueKind: JsonValueKind.Array } docs)
-            throw new CatalogUnavailableException();
+        using var response = await SearchDocumentsAsync(providerQuery, limit: 12, SearchFields, ct);
+        var docs = response.RootElement.GetProperty("docs");
 
-        var results = new List<CatalogEdition>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<CatalogWork>();
+
         foreach (var work in docs.EnumerateArray())
         {
+            if (ReadKey(work, "/works/", WorkIdPattern()) is not { } workId || Text(work, "title") is not { } title)
+                continue;
+            var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
             foreach (var doc in Array(work, "editions", "docs"))
             {
-                var id = ReadKey(doc, "/books/", EditionIdPattern());
-                var title = Text(doc, "title") ?? Text(work, "title");
-                var isbns = Texts(doc, "isbn").Select(ParseIsbn).OfType<string>().Distinct().ToArray();
-                if (id is null || title is null || !seen.Add(id))
-                    continue;
-
-                var authors = Texts(doc, "author_name");
-                if (authors.Length == 0) authors = Texts(work, "author_name");
-                var edition = CreateEdition(id, title, authors, Texts(doc, "publisher"),
-                    Texts(doc, "publish_date").FirstOrDefault(), isbns, PositiveInt(Property(doc, "cover_i")));
-                var workId = ReadKey(work, "/works/", WorkIdPattern());
-                lock (SnapshotGate)
-                {
-                    if (cache.TryGetValue<EditionSnapshot>($"edition:{id}", out var previous) && previous is not null)
-                    {
-                        // Both snapshots identify this edition; keep ISBNs verified by either search.
-                        edition = edition with
-                        {
-                            Isbn10 = edition.Isbn10.Union(previous.Edition.Isbn10).ToArray(),
-                            Isbn13 = edition.Isbn13.Union(previous.Edition.Isbn13).ToArray()
-                        };
-                        workId ??= previous.WorkId;
-                    }
-                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId,
-                        ParseYear(edition.PublicationDate), Texts(work, "series_name"), Texts(work, "subject")), SnapshotLifetime);
-                }
-                results.Add(edition);
-                if (results.Count == 12) return [.. results];
+                if (ReadKey(doc, "/books/", EditionIdPattern()) is not { } id) continue;
+                editions.TryAdd(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
+                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
             }
+            results.Add(new(workId, title, Texts(work, "author_name"),
+                PositiveInt(Property(work, "first_publish_year")), [.. editions.Values]));
         }
         return [.. results];
     }
 
-    public EditionSnapshot? FindSearchedEdition(string editionId) =>
-        cache.Get<EditionSnapshot>($"edition:{editionId}");
+    internal async Task<CatalogEditionPage?> BrowseEditionPageAsync(string workId, int offset, CancellationToken ct)
+    {
+        if (await FetchEditionPageAsync(workId, offset, limit: 25, ct) is not { } page) return null;
+        var (total, editions) = page;
+        var next = offset + editions.Length;
+        return new(editions, next < total ? next : null);
+    }
+
+    internal async Task<WorkImport?> FetchWorkAsync(string workId, CancellationToken ct)
+    {
+        var key = $"/works/{workId}";
+        using var response = await GetAsync($"works/{workId}.json", ct);
+        if (response is null) return null;
+        if (Text(response.RootElement, "key") != key ||
+            Text(response.RootElement, "title") is not { } title)
+            throw new CatalogUnavailableException();
+        var details = response.RootElement;
+        // The work document links to authors by ID; one exact-key projection resolves display names.
+        using var projection = await SearchDocumentsAsync($"key:{key}", limit: 1, WorkMetadataFields, ct);
+        var metadata = projection.RootElement.GetProperty("docs").EnumerateArray()
+            .FirstOrDefault(doc => Text(doc, "key") == key);
+        var work = new LibraryWork
+        {
+            WorkId = workId,
+            Title = title,
+            Authors = Texts(metadata, "author_name"),
+            Subjects = Texts(details, "subjects").Union(Texts(metadata, "subject")).ToArray(),
+            Series = Texts(details, "series").Union(Texts(metadata, "series_name")).ToArray(),
+            FirstPublicationYear = ParseYear(Text(details, "first_publish_date")) ?? PositiveInt(Property(metadata, "first_publish_year"))
+        };
+        return new(work, await FetchAllEditionsAsync(workId, ct));
+    }
+
+    private async Task<JsonDocument> SearchDocumentsAsync(string query, int limit, string fields, CancellationToken ct)
+    {
+        var response = await GetAsync($"search.json?q={Uri.EscapeDataString(query)}&limit={limit}&fields={fields}", ct);
+        if (response is not null && Property(response.RootElement, "docs").ValueKind == JsonValueKind.Array)
+            return response;
+        response?.Dispose();
+        throw new CatalogUnavailableException();
+    }
+
+    private async Task<CatalogEdition[]> FetchAllEditionsAsync(string workId, CancellationToken ct)
+    {
+        var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
+        int? total = null;
+        for (var offset = 0; total is null || offset < total;)
+        {
+            var (count, page) = await FetchEditionPageAsync(workId, offset, limit: 100, ct) ?? throw new CatalogUnavailableException();
+            if (total is not null && count != total) throw new CatalogUnavailableException();
+            total = count;
+            foreach (var edition in page)
+                if (!editions.TryAdd(edition.EditionId, edition))
+                    throw new CatalogUnavailableException();
+            offset += page.Length;
+        }
+        return [.. editions.Values];
+    }
+
+    private async Task<(int Total, CatalogEdition[] Editions)?> FetchEditionPageAsync(string workId, int offset, int limit, CancellationToken ct)
+    {
+        using var response = await GetAsync($"works/{workId}/editions.json?limit={limit}&offset={offset}", ct);
+        if (response is null) return null;
+        if (Property(response.RootElement, "size") is not { ValueKind: JsonValueKind.Number } size ||
+            !size.TryGetInt32(out var count) || count < 0 ||
+            Property(response.RootElement, "entries") is not { ValueKind: JsonValueKind.Array } page ||
+            page.GetArrayLength() > Math.Min(limit, Math.Max(0, count - offset)) || (page.GetArrayLength() == 0 && offset < count))
+            throw new CatalogUnavailableException();
+
+        var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
+        foreach (var doc in page.EnumerateArray())
+        {
+            if (ReadKey(doc, "/books/", EditionIdPattern()) is not { } id || editions.ContainsKey(id))
+                throw new CatalogUnavailableException();
+            editions.Add(id, CreateEdition(id, Text(doc, "title") ?? "Untitled edition", Texts(doc, "publishers"),
+                Text(doc, "publish_date"),
+                Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")),
+                Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue)));
+        }
+        return (count, [.. editions.Values]);
+    }
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken ct)
     {
@@ -89,11 +143,15 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
         }
     }
 
-    private static CatalogEdition CreateEdition(string id, string title, string[] authors, string[] publishers,
-        string? date, string[] isbns, int? cover) => new(id, title, authors, publishers, date,
+    private static CatalogEdition CreateEdition(string id, string title, string[] publishers,
+        string? date, IEnumerable<string> values, int? cover)
+    {
+        var isbns = values.Select(ParseIsbn).OfType<string>().Distinct().ToArray();
+        return new(id, title, publishers, date,
             isbns.Where(i => i.Length == 10).ToArray(), isbns.Where(i => i.Length == 13).ToArray(),
             cover is null ? null : $"https://covers.openlibrary.org/b/id/{cover}-M.jpg?default=false",
             $"https://openlibrary.org/books/{id}", false);
+    }
 
     private static string? ParseIsbn(string value)
     {

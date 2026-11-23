@@ -2,39 +2,32 @@ using System.Text.RegularExpressions;
 
 public sealed class LibraryBook
 {
-    public string EditionId { get; set; } = "";
-    public string? WorkId { get; set; }
-    public string Title { get; set; } = "";
-    public string[] Authors { get; set; } = Array.Empty<string>();
-    public string[] Publishers { get; set; } = Array.Empty<string>();
-    public string? PublicationDate { get; set; }
-    public string[] Isbn10 { get; set; } = Array.Empty<string>();
-    public string[] Isbn13 { get; set; } = Array.Empty<string>();
-    public int? PublicationYear { get; set; }
-    public string[] Series { get; set; } = Array.Empty<string>();
-    public string[] Tags { get; set; } = Array.Empty<string>();
-    public string? CoverUrl { get; set; }
-    public string EditionUrl { get; set; } = "";
-    public DateTimeOffset AddedAt { get; set; }
+    public required string EditionId { get; init; }
+    public required string WorkId { get; init; }
+    public required string Title { get; init; }
+    public required string[] Publishers { get; init; }
+    public string? PublicationDate { get; init; }
+    public required string[] Isbn10 { get; init; }
+    public required string[] Isbn13 { get; init; }
+    public string? CoverUrl { get; init; }
 
     public static string DocumentId(string editionId) => "LibraryBooks/" + editionId;
     public static bool IsValidEditionId(string editionId) => Regex.IsMatch(editionId, "\\AOL[0-9]{1,15}M\\z", RegexOptions.CultureInvariant);
-    public GalleryBook ToGallery(LibraryEntry entry) => new(EditionId, Title, Authors,
+    public GalleryBook ToGallery(LibraryEntry entry, LibraryWork work) => new(EditionId, Title, work.Authors,
         entry.HasLocalCover ? $"/api/library/books/{EditionId}/cover" : CoverUrl, entry.AddedAt);
 
-    public static LibraryBook From(EditionSnapshot snapshot, DateTimeOffset addedAt) => new()
+    public static LibraryBook From(CatalogEdition edition, string workId) => new()
     {
-        EditionId = snapshot.Edition.EditionId, WorkId = snapshot.WorkId, Title = snapshot.Edition.Title,
-        Authors = snapshot.Edition.Authors ?? Array.Empty<string>(), Publishers = snapshot.Edition.Publishers ?? Array.Empty<string>(),
-        PublicationDate = snapshot.Edition.PublicationDate, Isbn10 = snapshot.Edition.Isbn10 ?? Array.Empty<string>(),
-        Isbn13 = snapshot.Edition.Isbn13 ?? Array.Empty<string>(), CoverUrl = snapshot.Edition.CoverUrl,
-        PublicationYear = snapshot.PublicationYear, Series = snapshot.Series, Tags = snapshot.Tags,
-        EditionUrl = snapshot.Edition.EditionUrl, AddedAt = addedAt
+        EditionId = edition.EditionId, WorkId = workId, Title = edition.Title,
+        Publishers = edition.Publishers, PublicationDate = edition.PublicationDate,
+        Isbn10 = edition.Isbn10, Isbn13 = edition.Isbn13, CoverUrl = edition.CoverUrl
     };
 }
 
 public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
 
-public sealed record CatalogEdition(string EditionId, string Title, string[] Authors,
+public sealed record CatalogEdition(string EditionId, string Title,
     string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
     string? CoverUrl, string EditionUrl, bool AlreadyAdded);
+
+public sealed record CatalogEditionPage(CatalogEdition[] Editions, int? NextOffset);
