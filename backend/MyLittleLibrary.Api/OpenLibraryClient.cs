@@ -7,10 +7,7 @@ public sealed record CatalogEdition(string EditionId, string Title, string[] Aut
     string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
     string? CoverUrl, string EditionUrl, bool AlreadyAdded);
 
-// Ingestion-only metadata: keep it out of search/API responses while carrying it to persistence.
-public sealed record EditionMetadata(int? NumberOfPages, int? PublicationYear, string[] Series, string[] Tags);
-
-public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId, EditionMetadata Metadata);
+public sealed record EditionSnapshot(CatalogEdition Edition, string? WorkId, int? PublicationYear, string[] Series, string[] Tags);
 
 public sealed class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
@@ -19,7 +16,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 {
     private static readonly object SnapshotGate = new();
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromMinutes(15);
-    private const string Fields = "key,title,author_name,subject,series,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
+    private const string Fields = "key,title,author_name,subject,series_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
 
     public async Task<CatalogEdition[]> SearchAsync(string query, CancellationToken ct)
     {
@@ -43,11 +40,6 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 
                 var authors = Texts(doc, "author_name");
                 if (authors.Length == 0) authors = Texts(work, "author_name");
-                var metadata = new EditionMetadata(
-                    PositiveInt(Property(doc, "number_of_pages")),
-                    ParseYear(Texts(doc, "publish_date").FirstOrDefault()),
-                    Texts(doc, "series").Concat(Texts(work, "series")).Distinct(StringComparer.Ordinal).ToArray(),
-                    Texts(doc, "subject").Concat(Texts(work, "subject")).Distinct(StringComparer.Ordinal).ToArray());
                 var edition = CreateEdition(id, title, authors, Texts(doc, "publisher"),
                     Texts(doc, "publish_date").FirstOrDefault(), isbns, PositiveInt(Property(doc, "cover_i")));
                 var workId = ReadKey(work, "/works/", WorkIdPattern());
@@ -55,16 +47,16 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
                 {
                     if (cache.TryGetValue<EditionSnapshot>($"edition:{id}", out var previous) && previous is not null)
                     {
-                        // Keep verified ISBNs and avoid losing fields when a later response is sparse.
+                        // Both snapshots identify this edition; keep ISBNs verified by either search.
                         edition = edition with
                         {
                             Isbn10 = edition.Isbn10.Union(previous.Edition.Isbn10).ToArray(),
                             Isbn13 = edition.Isbn13.Union(previous.Edition.Isbn13).ToArray()
                         };
                         workId ??= previous.WorkId;
-                        metadata = MergeMetadata(metadata, previous.Metadata);
                     }
-                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId, metadata), SnapshotLifetime);
+                    cache.Set($"edition:{id}", new EditionSnapshot(edition, workId,
+                        ParseYear(edition.PublicationDate), Texts(work, "series_name"), Texts(work, "subject")), SnapshotLifetime);
                 }
                 results.Add(edition);
                 if (results.Count == 12) return [.. results];
@@ -75,12 +67,6 @@ public sealed partial class OpenLibraryClient(HttpClient http, IMemoryCache cach
 
     public EditionSnapshot? FindSearchedEdition(string editionId) =>
         cache.Get<EditionSnapshot>($"edition:{editionId}");
-
-    private static EditionMetadata MergeMetadata(EditionMetadata current, EditionMetadata previous) => new(
-        current.NumberOfPages ?? previous.NumberOfPages,
-        current.PublicationYear ?? previous.PublicationYear,
-        current.Series.Union(previous.Series, StringComparer.Ordinal).ToArray(),
-        current.Tags.Union(previous.Tags, StringComparer.Ordinal).ToArray());
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken ct)
     {

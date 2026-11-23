@@ -59,10 +59,9 @@ public sealed class LibraryFlowTests
         Assert.Equal("OL10000W", document.WorkId);
         Assert.Equal(TitleQuery, document.Title);
         Assert.Equal(Isbn, Assert.Single(document.Isbn13));
-        Assert.Equal(300, document.NumberOfPages);
         Assert.Equal(2012, document.PublicationYear);
-        Assert.Equal(new[] { "The Hobbit editions", "Middle-earth" }, document.Series);
-        Assert.Equal(new[] { "Children's books", "Fantasy", "Adventure" }, document.Tags);
+        Assert.Equal(new[] { "Middle-earth" }, document.Series);
+        Assert.Equal(new[] { "Fantasy", "Adventure" }, document.Tags);
         Assert.Equal(added.AddedAt, document.AddedAt);
 
         using var shelfResponse = await api.Client.GetAsync(BooksPath, Ct);
@@ -77,27 +76,6 @@ public sealed class LibraryFlowTests
         var repeated = await SearchAsync(api.Client, "978-0-547-92822-7");
         Assert.True(Assert.Single(repeated, edition => edition.EditionId == EditionId).AlreadyAdded);
         Assert.False(Assert.Single(repeated, edition => edition.EditionId == IllustratedEditionId).AlreadyAdded);
-        Assert.Equal(2, api.Catalog.Requests.Count);
-    }
-
-    [Fact]
-    public async Task SparseRepeatedSearchRetainsCachedMetadataForAdd()
-    {
-        await using var api = new ApiScenario(TitleQuery, TitleQuery);
-        api.Catalog.ReturnSparseAfterFirstSearch = true;
-        await SearchAsync(api.Client, TitleQuery);
-        await SearchAsync(api.Client, TitleQuery);
-
-        using var form = BookForm(EditionId);
-        using var accepted = await api.Client.PostAsync(BooksPath, form, Ct);
-        Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
-        using var session = api.Store.OpenAsyncSession();
-        var book = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>($"LibraryBooks/{EditionId}", Ct));
-
-        Assert.Equal(300, book.NumberOfPages);
-        Assert.Equal(2012, book.PublicationYear);
-        Assert.Equal(new[] { "The Hobbit editions", "Middle-earth" }, book.Series);
-        Assert.Equal(new[] { "Children's books", "Fantasy", "Adventure" }, book.Tags);
         Assert.Equal(2, api.Catalog.Requests.Count);
     }
 

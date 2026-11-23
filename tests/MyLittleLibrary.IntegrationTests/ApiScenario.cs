@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,subject,series,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.number_of_pages,editions.subject,editions.series";
+    private const string SearchFields = "key,title,author_name,subject,series_name,editions,editions.key,editions.title,editions.author_name,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i";
 
     private const string SearchResponse = """
         {
@@ -136,7 +136,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "title": "The Hobbit",
             "author_name": ["J. R. R. Tolkien"],
             "subject": ["Fantasy", "Adventure"],
-            "series": ["Middle-earth"],
+            "series_name": ["Middle-earth"],
             "editions": { "docs": [
               {
                 "key": "/books/OL100001M",
@@ -144,30 +144,20 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
                 "isbn": ["054792822X", "9780547928227"],
                 "publisher": ["Mariner Books"],
                 "publish_date": ["2012"],
-                "cover_i": 1234,
-                "number_of_pages": 300,
-                "series": ["The Hobbit editions"],
-                "subject": ["Children's books"]
+                "cover_i": 1234
               },
               {
                 "key": "/books/OL100002M",
-                "title": "The Hobbit (illustrated)",
-                "number_of_pages": 320
+                "title": "The Hobbit (illustrated)"
               }
             ] }
           }]
         }
         """;
 
-    private const string SparseSearchResponse = """
-        {"docs":[{"key":"/works/OL10000W","title":"The Hobbit","editions":{"docs":[{"key":"/books/OL100001M","title":"The Hobbit"}]}}]}
-        """;
-
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
-    private int searchCount;
     public ConcurrentQueue<Uri> Requests { get; } = new();
     public bool FailSearches { get; set; }
-    public bool ReturnSparseAfterFirstSearch { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -183,14 +173,12 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         var fields = Assert.IsType<string>(Assert.Single(query["fields"]));
         Assert.Equal(SearchFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
 
-        var requestNumber = Interlocked.Increment(ref searchCount);
         if (FailSearches)
             throw new HttpRequestException("Simulated Open Library outage.");
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent(ReturnSparseAfterFirstSearch && requestNumber > 1 ? SparseSearchResponse : SearchResponse,
-                Encoding.UTF8, "application/json")
+            Content = new StringContent(SearchResponse, Encoding.UTF8, "application/json")
         });
     }
 }
