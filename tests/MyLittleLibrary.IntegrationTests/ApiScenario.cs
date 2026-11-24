@@ -145,7 +145,6 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         {
             "/search.json" => Search(uri),
             "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
-            "/books/OL100001M.json" when uri.Query.Length == 0 => Json(HobbitEdition),
             "/works/OL10000W/editions.json" => Editions(uri),
             "/works/OL999W.json" or "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")

@@ -84,10 +84,7 @@ function WorkResult({ work, api, initiallyOpen, renderEdition }: { work: Catalog
       if (controller.signal.aborted) return;
       setEditions(current => {
         const byId = new Map(current.map(edition => [edition.editionId, edition]));
-        for (const edition of page.editions) {
-          const pageCount = edition.pageCount ?? byId.get(edition.editionId)?.pageCount;
-          byId.set(edition.editionId, { ...edition, pageCount });
-        }
+        for (const edition of page.editions) byId.set(edition.editionId, edition);
         return [...byId.values()];
       });
       setNextOffset(page.nextOffset ?? null);

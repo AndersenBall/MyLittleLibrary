@@ -36,10 +36,9 @@ public sealed class LibraryFlowTests
         Assert.Equal(1937, search.FirstPublicationYear);
         Assert.Equal([EditionId, IllustratedId], search.Editions.Select(e => e.EditionId));
         Assert.Equal(Isbn, Assert.Single(search.Editions[0].Isbn13));
-        Assert.Equal(300, search.Editions[0].PageCount);
-        Assert.Null(search.Editions[1].PageCount);
+        Assert.All(search.Editions, e => Assert.Null(e.PageCount));
         Assert.All(search.Editions, e => Assert.False(e.AlreadyAdded));
-        Assert.Equal(["/search.json", "/search.json", "/books/OL100001M.json"], api.Catalog.Requests.Select(uri => uri.AbsolutePath));
+        Assert.Equal(["/search.json", "/search.json"], api.Catalog.Requests.Select(uri => uri.AbsolutePath));
         Assert.Equal(0, await DocumentCountAsync(api));
 
         // This is the second nested match, not a browsed edition.
@@ -48,7 +47,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(IllustratedId, saved.EditionId);
         Assert.Null(saved.CoverUrl);
         Assert.Equal(Author, Assert.Single(added.Authors));
-        AssertImportRequests(api.Catalog.Requests.Skip(3));
+        AssertImportRequests(api.Catalog.Requests.Skip(2));
         Assert.Equal(5, await DocumentCountAsync(api));
         using (var session = api.Store.OpenAsyncSession())
         {
@@ -82,7 +81,7 @@ public sealed class LibraryFlowTests
         using var mismatch = await PostAsync(api.Client, PaperbackId, workId: "OL999W");
         Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
         Assert.Equal(6, await DocumentCountAsync(api));
-        Assert.Equal(7, api.Catalog.Requests.Count);
+        Assert.Equal(6, api.Catalog.Requests.Count);
     }
 
     [Fact]
