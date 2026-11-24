@@ -3,7 +3,7 @@ services:
     build:
       target: development
     working_dir: /src
-    command: dotnet watch --project MyLittleLibrary.Api/MyLittleLibrary.Api.csproj run --no-launch-profile --urls http://+:8080
+    command: dotnet watch --non-interactive --project MyLittleLibrary.Api/MyLittleLibrary.Api.csproj run --no-launch-profile --urls http://+:8080
     volumes:
       - ./backend:/src
     environment:
