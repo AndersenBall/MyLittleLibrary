@@ -59,6 +59,7 @@ export type HttpValidationProblemDetails = {
 export type MarkBookAsReadRequest = {
     workId: string;
     editionId: string;
+    rating: number;
 };
 
 export type ProblemDetails = {
@@ -68,6 +69,14 @@ export type ProblemDetails = {
     detail?: string | null;
     instance?: string | null;
     [key: string]: unknown;
+};
+
+export type ReadGalleryBook = {
+    editionId: string;
+    title: string;
+    authors: Array<string>;
+    coverUrl?: string | null;
+    rating?: number | null;
 };
 
 export type SearchCatalogData = {
@@ -212,6 +221,22 @@ export type GetHealthResponses = {
      */
     200: unknown;
 };
+
+export type GetReadBooksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/reading-history/books';
+};
+
+export type GetReadBooksResponses = {
+    /**
+     * OK
+     */
+    200: Array<ReadGalleryBook>;
+};
+
+export type GetReadBooksResponse = GetReadBooksResponses[keyof GetReadBooksResponses];
 
 export type MarkBookAsReadData = {
     body: MarkBookAsReadRequest;
