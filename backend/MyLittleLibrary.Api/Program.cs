@@ -37,10 +37,10 @@ app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
 var api = app.MapGroup("/api");
 
 var catalog = api.MapGroup("/catalog").WithTags("Catalog");
-catalog.MapGet("/search", LibraryHandler.SearchCatalog)
+catalog.MapGet("/search", CatalogHandler.SearchCatalog)
     .WithName("searchCatalog")
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
-catalog.MapGet("/works/{workId}/editions", LibraryHandler.GetCatalogEditions)
+catalog.MapGet("/works/{workId}/editions", CatalogHandler.GetCatalogEditions)
     .WithName("getCatalogEditions")
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status404NotFound)
@@ -52,6 +52,15 @@ library.MapGet("/books", LibraryHandler.GetBooks)
 library.MapPost("/books", LibraryHandler.AddBook)
     .WithName("addLibraryBook")
     .Produces<GalleryBook>(StatusCodes.Status201Created)
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status409Conflict)
+    .Produces(StatusCodes.Status415UnsupportedMediaType)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+var readingHistory = api.MapGroup("/reading-history").WithTags("Reading History");
+readingHistory.MapPost("/books", ReadingHistoryHandler.MarkAsRead)
+    .WithName("markBookAsRead")
     .ProducesProblem(StatusCodes.Status400BadRequest)
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status409Conflict)

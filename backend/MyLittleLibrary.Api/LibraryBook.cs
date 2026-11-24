@@ -28,6 +28,6 @@ public sealed record GalleryBook(string EditionId, string Title, string[] Author
 
 public sealed record CatalogEdition(string EditionId, string Title,
     string[] Publishers, string? PublicationDate, int? PageCount, string[] Isbn10, string[] Isbn13,
-    string? CoverUrl, string EditionUrl, bool AlreadyAdded);
+    string? CoverUrl, string EditionUrl, bool AlreadyAdded, bool AlreadyRead = false);
 
 public sealed record CatalogEditionPage(CatalogEdition[] Editions, int? NextOffset);

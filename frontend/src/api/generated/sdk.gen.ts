@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksErrors, GetLibraryBooksResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -18,26 +18,13 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/catalog/search',
-    ...options
-});
+export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({ url: '/api/catalog/search', ...options });
 
-export const getCatalogEditions = <ThrowOnError extends boolean = false>(options: Options<GetCatalogEditionsData, ThrowOnError>): RequestResult<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError> => (options.client ?? client).get<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/catalog/works/{workId}/editions',
-    ...options
-});
+export const getCatalogEditions = <ThrowOnError extends boolean = false>(options: Options<GetCatalogEditionsData, ThrowOnError>): RequestResult<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError> => (options.client ?? client).get<GetCatalogEditionsResponses, GetCatalogEditionsErrors, ThrowOnError>({ url: '/api/catalog/works/{workId}/editions', ...options });
 
-export const getLibraryBooks = <ThrowOnError extends boolean = false>(options?: Options<GetLibraryBooksData, ThrowOnError>): RequestResult<GetLibraryBooksResponses, GetLibraryBooksErrors, ThrowOnError> => (options?.client ?? client).get<GetLibraryBooksResponses, GetLibraryBooksErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/library/books',
-    ...options
-});
+export const getLibraryBooks = <ThrowOnError extends boolean = false>(options?: Options<GetLibraryBooksData, ThrowOnError>): RequestResult<GetLibraryBooksResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetLibraryBooksResponses, unknown, ThrowOnError>({ url: '/api/library/books', ...options });
 
 export const addLibraryBook = <ThrowOnError extends boolean = false>(options: Options<AddLibraryBookData, ThrowOnError>): RequestResult<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError> => (options.client ?? client).post<AddLibraryBookResponses, AddLibraryBookErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/library/books',
     ...options,
     headers: {
@@ -47,3 +34,12 @@ export const addLibraryBook = <ThrowOnError extends boolean = false>(options: Op
 });
 
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });
+
+export const markBookAsRead = <ThrowOnError extends boolean = false>(options: Options<MarkBookAsReadData, ThrowOnError>): RequestResult<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError> => (options.client ?? client).post<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError>({
+    url: '/api/reading-history/books',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

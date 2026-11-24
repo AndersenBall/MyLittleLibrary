@@ -53,16 +53,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
+        }
       }
     },
     "/api/catalog/works/{workId}/editions": {
@@ -129,16 +121,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
+        }
       }
     },
     "/api/library/books": {
@@ -160,16 +144,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
+        }
       },
       "post": {
         "tags": [
@@ -249,16 +225,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Unauthorized"
           }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
+        }
       }
     },
     "/health": {
@@ -269,6 +237,72 @@
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/reading-history/books": {
+      "post": {
+        "tags": [
+          "Reading History"
+        ],
+        "operationId": "markBookAsRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkBookAsReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -295,6 +329,7 @@
       "CatalogEdition": {
         "required": [
           "alreadyAdded",
+          "alreadyRead",
           "editionId",
           "editionUrl",
           "isbn10",
@@ -345,6 +380,9 @@
             "type": "string"
           },
           "alreadyAdded": {
+            "type": "boolean"
+          },
+          "alreadyRead": {
             "type": "boolean"
           }
         },
@@ -476,6 +514,22 @@
         },
         "additionalProperties": { }
       },
+      "MarkBookAsReadRequest": {
+        "required": [
+          "editionId",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string"
+          },
+          "editionId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProblemDetails": {
         "type": "object",
         "properties": {
@@ -521,6 +575,9 @@
     },
     {
       "name": "MyLittleLibrary.Api"
+    },
+    {
+      "name": "Reading History"
     }
   ]
 }

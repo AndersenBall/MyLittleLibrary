@@ -20,6 +20,7 @@ export type CatalogEdition = {
     coverUrl?: string | null;
     editionUrl: string;
     alreadyAdded: boolean;
+    alreadyRead: boolean;
 };
 
 export type CatalogEditionPage = {
@@ -55,6 +56,11 @@ export type HttpValidationProblemDetails = {
     [key: string]: unknown;
 };
 
+export type MarkBookAsReadRequest = {
+    workId: string;
+    editionId: string;
+};
+
 export type ProblemDetails = {
     type?: string | null;
     title?: string | null;
@@ -78,10 +84,6 @@ export type SearchCatalogErrors = {
      * Bad Request
      */
     400: HttpValidationProblemDetails;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
     /**
      * Service Unavailable
      */
@@ -116,10 +118,6 @@ export type GetCatalogEditionsErrors = {
      */
     400: ProblemDetails;
     /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
      * Not Found
      */
     404: ProblemDetails;
@@ -147,13 +145,6 @@ export type GetLibraryBooksData = {
     url: '/api/library/books';
 };
 
-export type GetLibraryBooksErrors = {
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-};
-
 export type GetLibraryBooksResponses = {
     /**
      * OK
@@ -175,10 +166,6 @@ export type AddLibraryBookErrors = {
      * Bad Request
      */
     400: ProblemDetails;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
     /**
      * Not Found
      */
@@ -225,3 +212,44 @@ export type GetHealthResponses = {
      */
     200: unknown;
 };
+
+export type MarkBookAsReadData = {
+    body: MarkBookAsReadRequest;
+    path?: never;
+    query?: never;
+    url: '/api/reading-history/books';
+};
+
+export type MarkBookAsReadErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * Not Found
+     */
+    404: ProblemDetails;
+    /**
+     * Conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Unsupported Media Type
+     */
+    415: unknown;
+    /**
+     * Service Unavailable
+     */
+    503: ProblemDetails;
+};
+
+export type MarkBookAsReadError = MarkBookAsReadErrors[keyof MarkBookAsReadErrors];
+
+export type MarkBookAsReadResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type MarkBookAsReadResponse = MarkBookAsReadResponses[keyof MarkBookAsReadResponses];

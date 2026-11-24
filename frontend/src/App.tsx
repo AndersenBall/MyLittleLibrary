@@ -136,6 +136,8 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
   const searchRequest = useRef<AbortController | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [marking, setMarking] = useState<string | null>(null);
+  const [read, setRead] = useState<Set<string>>(new Set());
 
   useEffect(() => () => searchRequest.current?.abort(), []);
 
@@ -157,6 +159,12 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     catch (error) { setMessage(apiMessage(error, `Couldn’t add “${result.title}”. Please try again.`)); }
     finally { setAdding(null); }
   }
+  async function markAsRead(workId: string, result: CatalogEdition) {
+    setMarking(result.editionId); setMessage('');
+    try { await api.markBookAsRead(workId, result.editionId); setRead(current => new Set(current).add(result.editionId)); }
+    catch (error) { setMessage(apiMessage(error, `Couldn’t mark “${result.title}” as read. Please try again.`)); }
+    finally { setMarking(null); }
+  }
   return <section className="page add-page">
     <div className="page-heading compact"><div><p className="eyebrow">Grow your collection</p><h1>Add Books</h1><p className="lede">Find an edition by title, author, or ISBN.</p></div><button className="button button-secondary" type="button" onClick={() => navigate('library')}>View Library →</button></div>
     <form className="search-form" onSubmit={submit}><label htmlFor="catalog-search">Search the catalog</label><div className="search-row"><input id="catalog-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try “The Hobbit” or an ISBN" maxLength={200} autoComplete="off" /><button className="button button-primary" type="submit">Search</button></div></form>
@@ -171,6 +179,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
         renderEdition={(result, authors) => {
         const id = result.editionId;
         const isAdded = result.alreadyAdded || added.has(id);
+        const isRead = result.alreadyRead || read.has(id);
         const isbn = result.isbn13?.[0] ?? result.isbn10?.[0];
         return <article className="edition-row" key={id}>
           <Cover src={result.coverUrl} title={result.title} authors={authors} className="result-cover" lazy />
@@ -180,9 +189,14 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
               {[result.publicationDate, result.publishers[0], result.pageCount && `${result.pageCount} pages`, isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
               <a href={result.editionUrl} target="_blank" rel="noreferrer">Open Library edition</a>
             </p>
-            <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result)}>
-              {adding === id ? 'Adding…' : isAdded ? '✓ Added' : 'Add to Library'}
-            </button>
+            <div className="edition-actions">
+              <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result)}>
+                {adding === id ? 'Adding…' : isAdded ? '✓ Added' : 'Add to Library'}
+              </button>
+              <button className={`button ${isRead ? 'button-added' : 'button-secondary'}`} type="button" disabled={isRead || marking !== null} onClick={() => void markAsRead(work.workId, result)}>
+                {marking === id ? 'Marking…' : isRead ? '✓ Read' : 'Mark As Read'}
+              </button>
+            </div>
           </div>
         </article>;
       }} />)}
