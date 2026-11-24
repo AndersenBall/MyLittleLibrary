@@ -9,13 +9,10 @@ import {
   type ReadGalleryBook,
 } from './api';
 import { RatingDialog, Stars } from './BookRating';
-
-const paths = { library: '/', read: '/read', add: '/add' } as const;
-type Route = keyof typeof paths;
+import { paths, routeForPath, type Route } from './routes';
 
 function routeFromLocation(): Route {
-  const path = window.location.pathname;
-  return path === paths.add ? 'add' : path === paths.read ? 'read' : 'library';
+  return routeForPath(window.location.pathname);
 }
 
 function Cover({ src, title, authors, className = '', lazy = false }: { src?: string | null; title: string; authors: string[]; className?: string; lazy?: boolean }) {

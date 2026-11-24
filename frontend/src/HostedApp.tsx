@@ -2,6 +2,7 @@ import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { useMemo, useState } from 'react';
 import App from './App';
 import { createLibraryApi } from './api';
+import { paths, routeForPath } from './routes';
 
 function SignedInApp() {
   const { isLoading, isAuthenticated, error, user, loginWithRedirect, logout, getAccessTokenSilently } = useAuth0();
@@ -41,7 +42,7 @@ export default function HostedApp() {
 
   return <Auth0Provider domain={domain} clientId={clientId}
     authorizationParams={{ redirect_uri: window.location.origin, audience }}
-    onRedirectCallback={(state) => window.history.replaceState({}, '', state?.returnTo === '/add' ? '/add' : '/')}>
+    onRedirectCallback={(state) => window.history.replaceState({}, '', paths[routeForPath(state?.returnTo)])}>
     <SignedInApp />
   </Auth0Provider>;
 }
