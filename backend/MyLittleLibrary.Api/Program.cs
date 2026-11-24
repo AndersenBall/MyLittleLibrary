@@ -15,12 +15,7 @@ builder.AddRavenDb();
 var contact = builder.Configuration["OpenLibrary:ContactEmail"]?.Trim();
 if (!MailAddress.TryCreate(contact, out var address) || address.Address != contact ||
     contact!.Any(c => c is < '!' or > '~' or '(' or ')' or '\\')) contact = null;
-builder.Services.AddSingleton(new CatalogRateLimit(contact is not null));
-builder.Services.AddHttpClient<OpenLibraryClient>(http =>
-{
-    http.BaseAddress = new Uri("https://openlibrary.org/");
-    http.DefaultRequestHeaders.UserAgent.ParseAdd(contact is null ? "MyLittleLibrary/1.0" : $"MyLittleLibrary/1.0 ({contact})");
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddOpenLibrary(contact);
 
 var app = builder.Build();
 
