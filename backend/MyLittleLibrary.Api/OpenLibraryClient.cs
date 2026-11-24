@@ -72,25 +72,10 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             Title = title,
             Authors = Texts(metadata, "author_name"),
             Subjects = Texts(details, "subjects").Union(Texts(metadata, "subject")).ToArray(),
-            Genres = await FetchGenresAsync(details, ct),
             Series = Texts(details, "series").Union(Texts(metadata, "series_name")).ToArray(),
             FirstPublicationYear = ParseYear(Text(details, "first_publish_date")) ?? PositiveInt(Property(metadata, "first_publish_year"))
         };
         return new(work, await FetchAllEditionsAsync(workId, ct));
-    }
-
-    private async Task<string[]> FetchGenresAsync(JsonElement work, CancellationToken ct)
-    {
-        var ids = Array(work, "genres").Select(tag => ReadKey(tag, "/tags/", TagIdPattern())).OfType<string>().Distinct();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in ids)
-        {
-            using var tag = await GetAsync($"tags/{id}.json", ct);
-            if (tag is null || Text(tag.RootElement, "key") != $"/tags/{id}" || Text(tag.RootElement, "name") is not { } name)
-                throw new CatalogUnavailableException();
-            names.Add(name);
-        }
-        return [.. names];
     }
 
     private async Task<JsonDocument> SearchDocumentsAsync(string query, int limit, string fields, CancellationToken ct)
@@ -219,8 +204,6 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     private static partial Regex EditionIdPattern();
     [GeneratedRegex("\\AOL[0-9]{1,15}W\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WorkIdPattern();
-    [GeneratedRegex("\\AOL[0-9]{1,15}T\\z", RegexOptions.CultureInvariant)]
-    private static partial Regex TagIdPattern();
     [GeneratedRegex("\\b[0-9]{4}\\b", RegexOptions.CultureInvariant)]
     private static partial Regex YearPattern();
 }
