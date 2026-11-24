@@ -17,10 +17,7 @@ public sealed class LibraryFlowTests
     private const string Isbn = "9780547928227";
     private const string Title = "The Hobbit";
     private const string Author = "J. R. R. Tolkien";
-    private static readonly byte[] Png = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQLd0AAAHdATsQfYP1AAAAAElFTkSuQmCC");
-    private static readonly byte[] OtherPng = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQWfAfAAJ/AbTRw0zcAAAAAElFTkSuQmCC");
+    private const string CatalogCoverUrl = "https://covers.openlibrary.org/b/id/1234-M.jpg?default=false";
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -41,7 +38,9 @@ public sealed class LibraryFlowTests
 
         // This is the second nested match, not a browsed edition.
         var added = await AddAsync(api.Client, IllustratedId);
-        Assert.Equal(IllustratedId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
+        var saved = Assert.Single(await ShelfAsync(api.Client));
+        Assert.Equal(IllustratedId, saved.EditionId);
+        Assert.Null(saved.CoverUrl);
         Assert.Equal(Author, Assert.Single(added.Authors));
         AssertImportRequests(api.Catalog.Requests.Skip(1));
         Assert.Equal(5, await DocumentCountAsync(api));
@@ -132,6 +131,10 @@ public sealed class LibraryFlowTests
         await using var api = new ApiScenario();
         using var invalidWork = await PostAsync(api.Client, EditionId, workId: "invalid");
         Assert.Equal(HttpStatusCode.BadRequest, invalidWork.StatusCode);
+        using var missingEdition = await api.Client.PostAsJsonAsync(BooksPath, new { workId = WorkId }, Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, missingEdition.StatusCode);
+        using var nullEdition = await api.Client.PostAsJsonAsync(BooksPath, new { workId = WorkId, editionId = (string?)null }, Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, nullEdition.StatusCode);
         using var invalidOffset = await api.Client.GetAsync($"{EditionsPath}?offset=-1", Ct);
         Assert.Equal(HttpStatusCode.BadRequest, invalidOffset.StatusCode);
         Assert.Empty(api.Catalog.Requests);
@@ -149,17 +152,18 @@ public sealed class LibraryFlowTests
         await using var api = new ApiScenario();
         api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
         api.Catalog.FailEditionOffset = 2;
-        using var failed = await PostAsync(api.Client, EditionId, Png);
+        using var failed = await PostAsync(api.Client, EditionId);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
         Assert.Equal("?limit=100&offset=2", api.Catalog.Requests.Last().Query);
         Assert.Equal(0, await DocumentCountAsync(api));
         Assert.Empty(await ShelfAsync(api.Client));
 
         api.Catalog.FailEditionOffset = null;
-        var added = await AddAsync(api.Client, EditionId, Png);
+        var added = await AddAsync(api.Client, EditionId);
         AssertImportRequests(api.Catalog.Requests.Skip(4));
         Assert.Equal(5, await DocumentCountAsync(api));
-        await AssertCoverAsync(api.Client, added, Png);
+        Assert.Equal(CatalogCoverUrl, added.CoverUrl);
+        Assert.Equal(CatalogCoverUrl, Assert.Single(await ShelfAsync(api.Client)).CoverUrl);
     }
 
     [Fact]
@@ -192,23 +196,18 @@ public sealed class LibraryFlowTests
     }
 
     [Fact]
-    public async Task OwnersShareImportedMetadataButNotShelfStateOrCoverAttachments()
+    public async Task OwnersShareImportedMetadataButNotShelfState()
     {
         await using var api = new ApiScenario(Title, Title, Title);
         using var other = api.CreateClient("reader"); // Differs from the first owner's claim only by case.
         await SearchAsync(api.Client, Title);
-        using var invalid = await PostAsync(api.Client, EditionId, "not a PNG"u8.ToArray());
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-        Assert.Equal(0, await DocumentCountAsync(api));
-        var first = await AddAsync(api.Client, EditionId, Png);
-        var second = await AddAsync(other, EditionId, OtherPng);
+        await AddAsync(api.Client, EditionId);
+        await AddAsync(other, EditionId);
         await AddAsync(api.Client, IllustratedId);
         Assert.Equal(6, await DocumentCountAsync(api));
         Assert.All(Assert.Single(await SearchAsync(api.Client, Title)).Editions, e => Assert.True(e.AlreadyAdded));
         Assert.All(Assert.Single(await SearchAsync(other, Title)).Editions, e => Assert.Equal(e.EditionId == EditionId, e.AlreadyAdded));
         Assert.Equal(EditionId, Assert.Single(await ShelfAsync(other)).EditionId);
-        await AssertCoverAsync(api.Client, first, Png);
-        await AssertCoverAsync(other, second, OtherPng);
     }
 
     [Fact]
@@ -216,22 +215,34 @@ public sealed class LibraryFlowTests
     {
         await using var api = new ApiScenario(Title, Title);
         await SearchAsync(api.Client, Title);
-        var added = await AddAsync(api.Client, EditionId, Png);
+        var added = await AddAsync(api.Client, EditionId);
         api.Catalog.FailSearches = true;
         using var unavailable = await api.Client.GetAsync(SearchPath(Title), Ct);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
         var calls = api.Catalog.Requests.Count;
         var saved = Assert.Single(await ShelfAsync(api.Client));
         Assert.Equal(added.AddedAt, saved.AddedAt);
-        using var repeated = await PostAsync(api.Client, EditionId, OtherPng);
+        using var repeated = await PostAsync(api.Client, EditionId);
         var duplicate = await ReadAsync<GalleryBook>(repeated, HttpStatusCode.OK);
         Assert.Equal(added.AddedAt, duplicate.AddedAt);
-        await AssertCoverAsync(api.Client, duplicate, Png);
         Assert.Equal(calls, api.Catalog.Requests.Count);
     }
 
     [Fact]
-    public async Task AnonymousRequestsAreRejectedBeforeCatalogAccessOrFormBindingButHealthIsPublic()
+    public async Task LegacyCoverRouteAndMultipartAddsAreNotSupported()
+    {
+        await using var api = new ApiScenario();
+        using var form = new MultipartFormDataContent { { new StringContent(WorkId), "workId" }, { new StringContent(EditionId), "editionId" } };
+        using var add = await api.Client.PostAsync(BooksPath, form, Ct);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, add.StatusCode);
+        using var cover = await api.Client.GetAsync($"{BooksPath}/{EditionId}/cover", Ct);
+        Assert.Equal(HttpStatusCode.NotFound, cover.StatusCode);
+        Assert.Empty(api.Catalog.Requests);
+        Assert.Equal(0, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task AnonymousRequestsAreRejectedBeforeCatalogAccessOrBodyBindingButHealthIsPublic()
     {
         await using var api = new ApiScenario();
         using var anonymous = api.CreateClient(null);
@@ -239,9 +250,8 @@ public sealed class LibraryFlowTests
         using var editions = await anonymous.GetAsync(EditionsPath, Ct);
         using var gallery = await anonymous.GetAsync(BooksPath, Ct);
         using var add = await anonymous.PostAsync(BooksPath, null, Ct);
-        using var cover = await anonymous.GetAsync($"{BooksPath}/{EditionId}/cover", Ct);
         using var health = await anonymous.GetAsync("/health", Ct);
-        Assert.All(new[] { search, editions, gallery, add, cover }, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+        Assert.All(new[] { search, editions, gallery, add }, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
         Assert.Empty(api.Catalog.Requests);
         Assert.Equal(0, await DocumentCountAsync(api));
@@ -271,23 +281,14 @@ public sealed class LibraryFlowTests
         return await ReadAsync<GalleryBook[]>(response, HttpStatusCode.OK);
     }
 
-    private static async Task<GalleryBook> AddAsync(HttpClient client, string editionId, byte[]? cover = null)
+    private static async Task<GalleryBook> AddAsync(HttpClient client, string editionId)
     {
-        using var response = await PostAsync(client, editionId, cover);
+        using var response = await PostAsync(client, editionId);
         return await ReadAsync<GalleryBook>(response, HttpStatusCode.Created);
     }
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, byte[]? cover = null, string workId = WorkId)
-    {
-        using var form = new MultipartFormDataContent { { new StringContent(workId), "workId" }, { new StringContent(editionId), "editionId" } };
-        if (cover is not null)
-        {
-            var file = new ByteArrayContent(cover);
-            file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-            form.Add(file, "cover", "cover.png");
-        }
-        return await client.PostAsync(BooksPath, form, Ct);
-    }
+    private static Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, string workId = WorkId) =>
+        client.PostAsJsonAsync(BooksPath, new { workId, editionId }, Ct);
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, HttpStatusCode expected)
     {
@@ -303,14 +304,4 @@ public sealed class LibraryFlowTests
         uri => Assert.Equal("/search.json", uri.AbsolutePath), // The fixture verifies the exact work-key projection.
         uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
         uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery));
-
-    private static async Task AssertCoverAsync(HttpClient client, GalleryBook book, byte[] bytes)
-    {
-        Assert.Equal($"{BooksPath}/{book.EditionId}/cover", book.CoverUrl);
-        using var response = await client.GetAsync(book.CoverUrl, Ct);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("image/png", response.Content.Headers.ContentType?.MediaType);
-        Assert.True(response.Headers.CacheControl?.NoStore);
-        Assert.Equal(bytes, await response.Content.ReadAsByteArrayAsync(Ct));
-    }
 }

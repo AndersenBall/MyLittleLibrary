@@ -13,8 +13,7 @@ public sealed class LibraryBook
 
     public static string DocumentId(string editionId) => "LibraryBooks/" + editionId;
     public static bool IsValidEditionId(string editionId) => Regex.IsMatch(editionId, "\\AOL[0-9]{1,15}M\\z", RegexOptions.CultureInvariant);
-    public GalleryBook ToGallery(LibraryEntry entry, LibraryWork work) => new(EditionId, Title, work.Authors,
-        entry.HasLocalCover ? $"/api/library/books/{EditionId}/cover" : CoverUrl, entry.AddedAt);
+    public GalleryBook ToGallery(LibraryEntry entry, LibraryWork work) => new(EditionId, Title, work.Authors, CoverUrl, entry.AddedAt);
 
     public static LibraryBook From(CatalogEdition edition, string workId) => new()
     {
