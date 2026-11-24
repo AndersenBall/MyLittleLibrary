@@ -18,7 +18,7 @@ public static class CatalogHandler
             return TypedResults.Problem(title: ex.Message, statusCode: 503);
         }
 
-        var states = await LoadEditionStatesAsync(works.SelectMany(w => w.Editions), user, store, ct);
+        var states = await LoadEditionsAsync(works.SelectMany(w => w.Editions), user, store, ct);
         return TypedResults.Ok(works.Select(w => w with { Editions = MarkEditionStates(w.Editions, states) }).ToArray());
     }
 
@@ -26,7 +26,7 @@ public static class CatalogHandler
         string workId, int? offset, ClaimsPrincipal user, OpenLibraryClient catalog, IDocumentStore store, CancellationToken ct)
     {
         if (offset < 0) return TypedResults.Problem("The edition offset must not be negative.", statusCode: 400);
-        if (!LibraryWork.IsValidWorkId(workId))
+        if (!LibraryBook.IsValidWorkId(workId))
             return TypedResults.Problem("A valid Open Library work ID is required.", statusCode: 400);
 
         CatalogEditionPage? page;
@@ -36,11 +36,11 @@ public static class CatalogHandler
             return TypedResults.Problem(title: ex.Message, statusCode: 503);
         }
         if (page is null) return TypedResults.Problem("Open Library could not find this work.", statusCode: 404);
-        var states = await LoadEditionStatesAsync(page.Editions, user, store, ct);
+        var states = await LoadEditionsAsync(page.Editions, user, store, ct);
         return TypedResults.Ok(page with { Editions = MarkEditionStates(page.Editions, states) });
     }
 
-    private static async Task<Dictionary<string, (bool Added, bool Read)>> LoadEditionStatesAsync(IEnumerable<CatalogEdition> editions,
+    private static async Task<Dictionary<string, (bool Added, bool Read)>> LoadEditionsAsync(IEnumerable<CatalogEdition> editions,
         ClaimsPrincipal user, IDocumentStore store, CancellationToken ct)
     {
         var ids = editions.Select(e => e.EditionId).Distinct().ToArray();

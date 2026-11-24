@@ -5,18 +5,18 @@ using Raven.Client.Exceptions;
 internal static class BookStore
 {
     // The user's entry and any missing catalog metadata commit together.
-    public static async Task<(TEntry Entry, LibraryBook Book, LibraryWork Work, bool Created)> SaveAsync<TEntry>(
+    public static async Task<(TEntry Entry, LibraryEdition Book, LibraryBook Work, bool Created)> SaveAsync<TEntry>(
         string? workId, string? editionId, IDocumentStore store, OpenLibraryClient catalog,
-        Func<string, string> entryDocumentId, Func<LibraryBook, TEntry> createEntry, CancellationToken ct)
+        Func<string, string> entryDocumentId, Func<LibraryEdition, TEntry> createEntry, CancellationToken ct)
         where TEntry : class
     {
         workId = workId?.Trim();
         editionId = editionId?.Trim();
-        if (workId is null || editionId is null || !LibraryWork.IsValidWorkId(workId) || !LibraryBook.IsValidEditionId(editionId))
+        if (workId is null || editionId is null || !LibraryBook.IsValidWorkId(workId) || !LibraryEdition.IsValidEditionId(editionId))
             throw new BookWriteException("Valid Open Library work and edition IDs are required.", 400);
 
-        var bookId = LibraryBook.DocumentId(editionId);
-        var workDocumentId = LibraryWork.DocumentId(workId);
+        var bookId = LibraryEdition.DocumentId(editionId);
+        var workDocumentId = LibraryBook.DocumentId(workId);
         var entryId = entryDocumentId(editionId);
         WorkImport? import = null;
         CatalogUnavailableException? importError = null;
@@ -24,8 +24,8 @@ internal static class BookStore
         {
             using var session = store.OpenAsyncSession();
             var entry = await session.LoadAsync<TEntry>(entryId, ct);
-            var work = await session.LoadAsync<LibraryWork>(workDocumentId, ct);
-            var book = await session.LoadAsync<LibraryBook>(bookId, ct);
+            var work = await session.LoadAsync<LibraryBook>(workDocumentId, ct);
+            var book = await session.LoadAsync<LibraryEdition>(bookId, ct);
             if ((book is not null && book.WorkId != workId) || (work is not null && book is null))
                 throw new BookWriteException("This edition does not belong to the selected work.", 404);
             if (book is not null && work is null) continue; // The import may have committed between reads.
@@ -50,12 +50,12 @@ internal static class BookStore
                 var selected = import.Editions.FirstOrDefault(e => e.EditionId == editionId)
                     ?? throw new BookWriteException("This edition does not belong to the selected work.", 404);
                 work = import.Work;
-                book = LibraryBook.From(selected, work.WorkId);
+                book = LibraryEdition.From(selected, work.WorkId);
                 await session.StoreAsync(work, string.Empty, workDocumentId, ct);
                 foreach (var edition in import.Editions)
                 {
-                    var imported = edition.EditionId == editionId ? book : LibraryBook.From(edition, work.WorkId);
-                    await session.StoreAsync(imported, string.Empty, LibraryBook.DocumentId(imported.EditionId), ct);
+                    var imported = edition.EditionId == editionId ? book : LibraryEdition.From(edition, work.WorkId);
+                    await session.StoreAsync(imported, string.Empty, LibraryEdition.DocumentId(imported.EditionId), ct);
                 }
             }
 
