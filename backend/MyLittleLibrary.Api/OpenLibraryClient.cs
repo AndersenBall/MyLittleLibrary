@@ -41,9 +41,9 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     internal async Task<CatalogEditionPage?> BrowseEditionPageAsync(string workId, int offset, CancellationToken ct)
     {
         if (await FetchEditionPageAsync(workId, offset, limit: 25, ct) is not { } page) return null;
-        var (total, editions) = page;
+        var (total, editions, englishIds) = page;
         var next = offset + editions.Length;
-        return new(editions, next < total ? next : null);
+        return new(editions.Where(e => englishIds.Contains(e.EditionId)).ToArray(), next < total ? next : null);
     }
 
     internal async Task<WorkImport?> FetchWorkAsync(string workId, CancellationToken ct)
@@ -86,7 +86,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         int? total = null;
         for (var offset = 0; total is null || offset < total;)
         {
-            var (count, page) = await FetchEditionPageAsync(workId, offset, limit: 100, ct) ?? throw new CatalogUnavailableException();
+            var (count, page, _) = await FetchEditionPageAsync(workId, offset, limit: 100, ct) ?? throw new CatalogUnavailableException();
             if (total is not null && count != total) throw new CatalogUnavailableException();
             total = count;
             foreach (var edition in page)
@@ -97,7 +97,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         return [.. editions.Values];
     }
 
-    private async Task<(int Total, CatalogEdition[] Editions)?> FetchEditionPageAsync(string workId, int offset, int limit, CancellationToken ct)
+    private async Task<(int Total, CatalogEdition[] Editions, HashSet<string> EnglishIds)?> FetchEditionPageAsync(string workId, int offset, int limit, CancellationToken ct)
     {
         using var response = await GetAsync($"works/{workId}/editions.json?limit={limit}&offset={offset}", ct);
         if (response is null) return null;
@@ -108,16 +108,19 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             throw new CatalogUnavailableException();
 
         var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
+        var englishIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var doc in page.EnumerateArray())
         {
             if (ReadKey(doc, "/books/", EditionIdPattern()) is not { } id || editions.ContainsKey(id))
                 throw new CatalogUnavailableException();
+            if (Array(doc, "languages").Any(language => Text(language, "key") == "/languages/eng"))
+                englishIds.Add(id);
             editions.Add(id, CreateEdition(id, Text(doc, "title") ?? "Untitled edition", Texts(doc, "publishers"),
                 Text(doc, "publish_date"),
                 Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")),
                 Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue)));
         }
-        return (count, [.. editions.Values]);
+        return (count, [.. editions.Values], englishIds);
     }
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken ct)

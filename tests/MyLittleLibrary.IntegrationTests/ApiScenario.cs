@@ -209,8 +209,9 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             {
                 var docs = string.Join(',', page.Select(id => id switch
                 {
-                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "publish_date": "2012", "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
-                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "publish_date": "May 2015" }""",
+                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
+                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015" }""",
+                    "OL100004M" or "OL100005M" => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (French)", "languages": [{ "key": "/languages/fre" }] }""",
                     _ => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (paperback)" }"""
                 }));
                 return Json($"{{\"size\":{EditionPages.Sum(x => x.Length)},\"entries\":[{docs}]}}");
