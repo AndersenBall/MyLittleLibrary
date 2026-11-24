@@ -80,25 +80,50 @@ public sealed class LibraryFlowTests
     public async Task BrowseRequestsOnePageAtATimeWithoutAPriorSearch()
     {
         await using var api = new ApiScenario();
-        api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
+        api.Catalog.EditionPages = [[EditionId, "OL100004M"], [PaperbackId, "OL100005M"], [IllustratedId]];
 
         using var firstResponse = await api.Client.GetAsync(EditionsPath, Ct);
         var first = await ReadAsync<CatalogEditionPage>(firstResponse, HttpStatusCode.OK);
-        Assert.Equal([EditionId, IllustratedId], first.Editions.Select(e => e.EditionId));
+        Assert.Equal(EditionId, Assert.Single(first.Editions).EditionId);
+        Assert.False(first.Editions[0].AlreadyAdded);
         Assert.Equal(2, first.NextOffset);
         Assert.Equal("?limit=25&offset=0", api.Catalog.Requests.Last().Query);
         Assert.Single(api.Catalog.Requests);
         using var secondResponse = await api.Client.GetAsync($"{EditionsPath}?offset={first.NextOffset}", Ct);
         var second = await ReadAsync<CatalogEditionPage>(secondResponse, HttpStatusCode.OK);
-        Assert.Equal(PaperbackId, Assert.Single(second.Editions).EditionId);
-        Assert.Null(second.NextOffset);
+        Assert.Empty(second.Editions);
+        Assert.Equal(4, second.NextOffset);
         Assert.Equal("?limit=25&offset=2", api.Catalog.Requests.Last().Query);
-        Assert.Equal(2, api.Catalog.Requests.Count);
+        using var thirdResponse = await api.Client.GetAsync($"{EditionsPath}?offset={second.NextOffset}", Ct);
+        var third = await ReadAsync<CatalogEditionPage>(thirdResponse, HttpStatusCode.OK);
+        Assert.Equal(IllustratedId, Assert.Single(third.Editions).EditionId);
+        Assert.Null(third.NextOffset);
+        Assert.Equal("?limit=25&offset=4", api.Catalog.Requests.Last().Query);
+        Assert.Equal(3, api.Catalog.Requests.Count);
         Assert.Equal(0, await DocumentCountAsync(api));
 
-        await AddAsync(api.Client, PaperbackId);
-        AssertImportRequests(api.Catalog.Requests.Skip(2));
-        Assert.Equal(PaperbackId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
+        await AddAsync(api.Client, EditionId);
+        Assert.Collection(api.Catalog.Requests.Skip(3),
+            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
+            uri => Assert.Equal("/search.json", uri.AbsolutePath),
+            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
+            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery),
+            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=4", uri.PathAndQuery));
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
+        using (var session = api.Store.OpenAsyncSession())
+        {
+            var imported = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
+            Assert.Equal(5, imported.Count());
+            Assert.Contains(imported, e => e.EditionId == PaperbackId);
+            Assert.Contains(imported, e => e.EditionId == "OL100004M");
+        }
+        using var addedResponse = await api.Client.GetAsync(EditionsPath, Ct);
+        var addedPage = await ReadAsync<CatalogEditionPage>(addedResponse, HttpStatusCode.OK);
+        Assert.True(Assert.Single(addedPage.Editions).AlreadyAdded);
+        using var other = api.CreateClient("another-reader");
+        using var otherResponse = await other.GetAsync(EditionsPath, Ct);
+        var otherPage = await ReadAsync<CatalogEditionPage>(otherResponse, HttpStatusCode.OK);
+        Assert.False(Assert.Single(otherPage.Editions).AlreadyAdded);
     }
 
     [Fact]
