@@ -26,7 +26,7 @@ public sealed class LibraryBook
 public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
 
 public sealed record CatalogEdition(string EditionId, string Title,
-    string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
+    string[] Publishers, string? PublicationDate, int? PageCount, string[] Isbn10, string[] Isbn13,
     string? CoverUrl, string EditionUrl, bool AlreadyAdded);
 
 public sealed record CatalogEditionPage(CatalogEdition[] Editions, int? NextOffset);

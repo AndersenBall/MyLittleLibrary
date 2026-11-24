@@ -7,7 +7,7 @@ public sealed class CatalogUnavailableException(Exception? inner = null)
 
 public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
-    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.number_of_pages,editions.cover_i,editions.language";
     private const string SearchLanguageFilter = "language:eng";
     private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
 
@@ -29,7 +29,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             {
                 if (!IsEnglishEdition(doc) || ReadKey(doc, "/books/", EditionIdPattern()) is not { } id) continue;
                 editions.TryAdd(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
-                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
+                    Texts(doc, "publish_date").FirstOrDefault(), PositiveInt(Property(doc, "number_of_pages")),
+                    Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
             }
             if (editions.Count > 0)
                 results.Add(new(workId, title, Texts(work, "author_name"),
@@ -117,6 +118,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
                 englishIds.Add(id);
             editions.Add(id, CreateEdition(id, Text(doc, "title") ?? "Untitled edition", Texts(doc, "publishers"),
                 Text(doc, "publish_date"),
+                PositiveInt(Property(doc, "number_of_pages")),
                 Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")),
                 Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue)));
         }
@@ -149,10 +151,10 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     }
 
     private static CatalogEdition CreateEdition(string id, string title, string[] publishers,
-        string? date, IEnumerable<string> values, int? cover)
+        string? date, int? pageCount, IEnumerable<string> values, int? cover)
     {
         var isbns = values.Select(ParseIsbn).OfType<string>().Distinct().ToArray();
-        return new(id, title, publishers, date,
+        return new(id, title, publishers, date, pageCount,
             isbns.Where(i => i.Length == 10).ToArray(), isbns.Where(i => i.Length == 13).ToArray(),
             cover is null ? null : $"https://covers.openlibrary.org/b/id/{cover}-M.jpg?default=false",
             $"https://openlibrary.org/books/{id}", false);

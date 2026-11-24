@@ -320,6 +320,11 @@
             "type": "string",
             "nullable": true
           },
+          "pageCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
           "isbn10": {
             "type": "array",
             "items": {

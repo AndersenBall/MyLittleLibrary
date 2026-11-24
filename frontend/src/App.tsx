@@ -173,7 +173,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
           <div className="result-details">
             <h3>{result.title}</h3>
             <p className="edition-details">
-              {[result.publicationDate, result.publishers[0], isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
+              {[result.publicationDate, result.publishers[0], result.pageCount && `${result.pageCount} pages`, isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
               <a href={result.editionUrl} target="_blank" rel="noreferrer">Open Library edition</a>
             </p>
             <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result)}>

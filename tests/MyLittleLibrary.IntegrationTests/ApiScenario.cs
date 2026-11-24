@@ -127,7 +127,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
-    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
+    private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.number_of_pages,editions.cover_i,editions.language";
     private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
@@ -178,7 +178,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
           "first_publish_year": 1937,
           "editions": { "docs": [
             { "key": "/books/OL100001M", "title": "The Hobbit", "language": ["eng"], "isbn": ["054792822X", "9780547928227"],
-              "publisher": ["Mariner Books"], "publish_date": ["2012"], "cover_i": 1234 },
+              "publisher": ["Mariner Books"], "publish_date": ["2012"], "number_of_pages": 320, "cover_i": 1234 },
             { "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "language": ["/languages/eng"] },
             { "key": "/books/OL100004M", "title": "The Hobbit (French)", "language": ["fre"] }
           ] }
@@ -209,7 +209,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             {
                 var docs = string.Join(',', page.Select(id => id switch
                 {
-                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
+                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "number_of_pages": 320, "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
                     "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015" }""",
                     "OL100004M" or "OL100005M" => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (French)", "languages": [{ "key": "/languages/fre" }] }""",
                     _ => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (paperback)" }"""

@@ -32,6 +32,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(1937, search.FirstPublicationYear);
         Assert.Equal([EditionId, IllustratedId], search.Editions.Select(e => e.EditionId));
         Assert.Equal(Isbn, Assert.Single(search.Editions[0].Isbn13));
+        Assert.Equal(320, search.Editions[0].PageCount);
         Assert.All(search.Editions, e => Assert.False(e.AlreadyAdded));
         Assert.Single(api.Catalog.Requests);
         Assert.Equal(0, await DocumentCountAsync(api));
@@ -84,6 +85,7 @@ public sealed class LibraryFlowTests
         using var firstResponse = await api.Client.GetAsync(EditionsPath, Ct);
         var first = await ReadAsync<CatalogEditionPage>(firstResponse, HttpStatusCode.OK);
         Assert.Equal(EditionId, Assert.Single(first.Editions).EditionId);
+        Assert.Equal(320, first.Editions[0].PageCount);
         Assert.False(first.Editions[0].AlreadyAdded);
         Assert.Equal(2, first.NextOffset);
         Assert.Equal("?limit=25&offset=0", api.Catalog.Requests.Last().Query);
