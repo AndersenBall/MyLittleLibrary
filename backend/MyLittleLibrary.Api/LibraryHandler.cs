@@ -15,12 +15,12 @@ public static class LibraryHandler
             .ThenBy(x => x.BookId)
             .ToListAsync(cancellationToken);
         if (entries.Count == 0) return TypedResults.Ok<IReadOnlyList<GalleryBook>>([]);
-        var books = await session.LoadAsync<LibraryBook>(entries.Select(x => x.BookId), cancellationToken);
-        var works = await session.LoadAsync<LibraryWork>(books.Values.Where(b => b is not null)
-            .Select(b => LibraryWork.DocumentId(b.WorkId)), cancellationToken);
+        var books = await session.LoadAsync<LibraryEdition>(entries.Select(x => x.BookId), cancellationToken);
+        var works = await session.LoadAsync<LibraryBook>(books.Values.Where(b => b is not null)
+            .Select(b => LibraryBook.DocumentId(b.WorkId)), cancellationToken);
         var gallery = new List<GalleryBook>(entries.Count);
         foreach (var entry in entries)
-            if (books[entry.BookId] is { } book && works[LibraryWork.DocumentId(book.WorkId)] is { } work)
+            if (books[entry.BookId] is { } book && works[LibraryBook.DocumentId(book.WorkId)] is { } work)
                 gallery.Add(book.ToGallery(entry, work));
         return TypedResults.Ok<IReadOnlyList<GalleryBook>>(gallery);
     }
@@ -37,7 +37,7 @@ public static class LibraryHandler
         {
             var (entry, book, work, created) = await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog,
                 editionId => LibraryEntry.DocumentId(ownerKey, editionId),
-                book => new LibraryEntry { OwnerKey = ownerKey, BookId = LibraryBook.DocumentId(book.EditionId), AddedAt = DateTimeOffset.UtcNow },
+                book => new LibraryEntry { OwnerKey = ownerKey, BookId = LibraryEdition.DocumentId(book.EditionId), AddedAt = DateTimeOffset.UtcNow },
                 cancellationToken);
             var result = book.ToGallery(entry, work);
             if (created) return TypedResults.Json(result, statusCode: StatusCodes.Status201Created);

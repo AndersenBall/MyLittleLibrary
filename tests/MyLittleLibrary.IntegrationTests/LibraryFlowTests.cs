@@ -52,13 +52,13 @@ public sealed class LibraryFlowTests
         Assert.Equal(5, await DocumentCountAsync(api));
         using (var session = api.Store.OpenAsyncSession())
         {
-            var work = Assert.IsType<LibraryWork>(await session.LoadAsync<LibraryWork>($"LibraryWorks/{WorkId}", Ct));
+            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>($"LibraryBooks/{WorkId}", Ct));
             Assert.Equal(Title, work.Title);
             Assert.Equal(1937, work.FirstPublicationYear);
             Assert.Equal(Author, Assert.Single(work.Authors));
             Assert.Equal(["Adventure", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
             Assert.Equal("Middle-earth", Assert.Single(work.Series));
-            var editions = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
+            var editions = await session.Advanced.LoadStartingWithAsync<LibraryEdition>("LibraryEditions/", token: Ct);
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, e => Assert.Equal(WorkId, e.WorkId));
             var original = Assert.Single(editions, e => e.EditionId == EditionId);
@@ -123,7 +123,7 @@ public sealed class LibraryFlowTests
         Assert.Equal(EditionId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
         using (var session = api.Store.OpenAsyncSession())
         {
-            var imported = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
+            var imported = await session.Advanced.LoadStartingWithAsync<LibraryEdition>("LibraryEditions/", token: Ct);
             Assert.Equal(5, imported.Count());
             Assert.Contains(imported, e => e.EditionId == PaperbackId);
             Assert.Contains(imported, e => e.EditionId == "OL100004M");
@@ -266,9 +266,9 @@ public sealed class LibraryFlowTests
         Assert.Empty(await ShelfAsync(api.Client));
         using (var session = api.Store.OpenAsyncSession())
         {
-            var work = Assert.IsType<LibraryWork>(await session.LoadAsync<LibraryWork>(LibraryWork.DocumentId(WorkId), Ct));
+            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
             Assert.Equal(Title, work.Title);
-            var editions = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
+            var editions = await session.Advanced.LoadStartingWithAsync<LibraryEdition>("LibraryEditions/", token: Ct);
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, edition => Assert.Equal(WorkId, edition.WorkId));
             var entry = Assert.Single(await session.Advanced.LoadStartingWithAsync<ReadingHistoryEntry>("ReadingHistoryEntries/", token: Ct));

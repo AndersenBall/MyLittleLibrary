@@ -54,7 +54,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             .FirstOrDefault(doc => Text(doc, "key") == key);
         if (metadata.ValueKind == JsonValueKind.Undefined) return null;
         if (Text(metadata, "title") is not { } title) throw new CatalogUnavailableException();
-        var work = new LibraryWork
+        var work = new LibraryBook
         {
             WorkId = workId,
             Title = title,
