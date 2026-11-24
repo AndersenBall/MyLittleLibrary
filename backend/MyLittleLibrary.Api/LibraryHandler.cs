@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Raven.Client.Documents;
-using Raven.Client.Exceptions;
 
 public static class LibraryHandler
 {
@@ -19,8 +18,8 @@ public static class LibraryHandler
             return TypedResults.Problem(title: ex.Message, statusCode: 503);
         }
 
-        var added = await LoadAddedEditionsAsync(works.SelectMany(w => w.Editions), user, store, ct);
-        return TypedResults.Ok(works.Select(w => w with { Editions = MarkAdded(w.Editions, added) }).ToArray());
+        var states = await LoadEditionStatesAsync(works.SelectMany(w => w.Editions), user, store, ct);
+        return TypedResults.Ok(works.Select(w => w with { Editions = MarkEditionStates(w.Editions, states) }).ToArray());
     }
 
     public static async Task<Results<Ok<CatalogEditionPage>, ProblemHttpResult>> GetCatalogEditions(
@@ -37,11 +36,11 @@ public static class LibraryHandler
             return TypedResults.Problem(title: ex.Message, statusCode: 503);
         }
         if (page is null) return TypedResults.Problem("Open Library could not find this work.", statusCode: 404);
-        var added = await LoadAddedEditionsAsync(page.Editions, user, store, ct);
-        return TypedResults.Ok(page with { Editions = MarkAdded(page.Editions, added) });
+        var states = await LoadEditionStatesAsync(page.Editions, user, store, ct);
+        return TypedResults.Ok(page with { Editions = MarkEditionStates(page.Editions, states) });
     }
 
-    private static async Task<HashSet<string>> LoadAddedEditionsAsync(IEnumerable<CatalogEdition> editions,
+    private static async Task<Dictionary<string, (bool Added, bool Read)>> LoadEditionStatesAsync(IEnumerable<CatalogEdition> editions,
         ClaimsPrincipal user, IDocumentStore store, CancellationToken ct)
     {
         var ids = editions.Select(e => e.EditionId).Distinct().ToArray();
@@ -49,11 +48,12 @@ public static class LibraryHandler
         var ownerKey = LibraryAuthentication.OwnerKey(user);
         using var session = store.OpenAsyncSession();
         var saved = await session.LoadAsync<LibraryEntry>(ids.Select(id => LibraryEntry.DocumentId(ownerKey, id)), ct);
-        return ids.Where(id => saved[LibraryEntry.DocumentId(ownerKey, id)] is not null).ToHashSet();
+        var read = await ReadingHistoryHandler.LoadReadEditionsAsync(ids, ownerKey, session, ct);
+        return ids.ToDictionary(id => id, id => (saved[LibraryEntry.DocumentId(ownerKey, id)] is not null, read.Contains(id)));
     }
 
-    private static CatalogEdition[] MarkAdded(CatalogEdition[] editions, HashSet<string> added) =>
-        editions.Select(e => added.Contains(e.EditionId) ? e with { AlreadyAdded = true } : e).ToArray();
+    private static CatalogEdition[] MarkEditionStates(CatalogEdition[] editions, Dictionary<string, (bool Added, bool Read)> states) =>
+        editions.Select(e => e with { AlreadyAdded = states[e.EditionId].Added, AlreadyRead = states[e.EditionId].Read }).ToArray();
 
     public static async Task<Ok<IReadOnlyList<GalleryBook>>> GetBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
     {
@@ -83,70 +83,17 @@ public static class LibraryHandler
         OpenLibraryClient catalog,
         CancellationToken cancellationToken)
     {
-        var workId = input.WorkId?.Trim();
-        var editionId = input.EditionId?.Trim();
-        if (workId is null || editionId is null || !LibraryWork.IsValidWorkId(workId) || !LibraryBook.IsValidEditionId(editionId))
-            return TypedResults.Problem("Valid Open Library work and edition IDs are required.", statusCode: 400);
-
         var ownerKey = LibraryAuthentication.OwnerKey(user);
-        var bookId = LibraryBook.DocumentId(editionId);
-        var workDocumentId = LibraryWork.DocumentId(workId);
-        var entryId = LibraryEntry.DocumentId(ownerKey, editionId);
-
-        WorkImport? import = null;
-        string? importError = null;
-        for (var attempt = 0; attempt < 3; attempt++)
+        try
         {
-            using var session = store.OpenAsyncSession();
-            var entry = await session.LoadAsync<LibraryEntry>(entryId, cancellationToken);
-            var work = await session.LoadAsync<LibraryWork>(workDocumentId, cancellationToken);
-            var book = await session.LoadAsync<LibraryBook>(bookId, cancellationToken);
-            if ((book is not null && book.WorkId != workId) || (work is not null && book is null))
-                return TypedResults.Problem("This edition does not belong to the selected work.", statusCode: 404);
-            if (book is not null && work is null) continue; // The import may have committed between reads.
-            if (entry is not null)
-            {
-                if (book is not null && work is not null) return TypedResults.Ok(book.ToGallery(entry, work));
-                break;
-            }
-            if (book is null && importError is not null)
-                return TypedResults.Problem(title: importError, statusCode: 503);
-
-            // One atomic batch. Empty change vectors make every write create-only.
-            if (book is null)
-            {
-                try { import ??= await catalog.FetchWorkAsync(workId, cancellationToken); }
-                catch (CatalogUnavailableException ex)
-                {
-                    // Another request may have imported the book while this provider request failed.
-                    importError = ex.Message;
-                    continue;
-                }
-                if (import is null) return TypedResults.Problem("Open Library could not find this work.", statusCode: 404);
-                if (!import.Editions.Any(e => e.EditionId == editionId))
-                    return TypedResults.Problem("This edition does not belong to the selected work.", statusCode: 404);
-                work = import.Work;
-                await session.StoreAsync(work, string.Empty, workDocumentId, cancellationToken);
-                foreach (var edition in import.Editions)
-                {
-                    var imported = LibraryBook.From(edition, work.WorkId);
-                    await session.StoreAsync(imported, string.Empty, LibraryBook.DocumentId(imported.EditionId), cancellationToken);
-                    if (imported.EditionId == editionId) book = imported;
-                }
-            }
-            entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = DateTimeOffset.UtcNow };
-            await session.StoreAsync(entry, string.Empty, entryId, cancellationToken);
-
-            try
-            {
-                await session.SaveChangesAsync(cancellationToken);
-                return TypedResults.Json(book!.ToGallery(entry, work!), statusCode: StatusCodes.Status201Created);
-            }
-            catch (ConcurrencyException)
-            {
-                // Read the winning book/entry in a fresh session before retrying a missing write.
-            }
+            var (entry, book, work, created) = await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog,
+                editionId => LibraryEntry.DocumentId(ownerKey, editionId),
+                book => new LibraryEntry { OwnerKey = ownerKey, BookId = LibraryBook.DocumentId(book.EditionId), AddedAt = DateTimeOffset.UtcNow },
+                cancellationToken);
+            var result = book.ToGallery(entry, work);
+            if (created) return TypedResults.Json(result, statusCode: StatusCodes.Status201Created);
+            return TypedResults.Ok(result);
         }
-        return TypedResults.Problem("The library write conflicted and could not be read back.", statusCode: 409);
+        catch (BookWriteException ex) { return ex.ToProblem(); }
     }
 }

@@ -1,9 +1,14 @@
 import { createClient } from './api/generated/client';
-import { addLibraryBook as add, getCatalogEditions as editions, getLibraryBooks as list, searchCatalog as search } from './api/generated/sdk.gen';
+import { addLibraryBook as add, getCatalogEditions as editions, getLibraryBooks as list, markBookAsRead as markRead, searchCatalog as search } from './api/generated/sdk.gen';
 export type { CatalogEdition, CatalogWork, GalleryBook } from './api/generated/types.gen';
 
 export function createLibraryApi(getAccessToken?: () => Promise<string>) {
-  const client = createClient({ baseUrl: window.location.origin, auth: getAccessToken, cache: 'no-store', redirect: 'error' });
+  const client = createClient({ baseUrl: window.location.origin, cache: 'no-store', redirect: 'error' });
+  // The API's fallback authorization policy applies even without per-route OpenAPI security metadata.
+  if (getAccessToken) client.interceptors.request.use(async request => {
+    request.headers.set('Authorization', `Bearer ${await getAccessToken()}`);
+    return request;
+  });
   return {
     async searchCatalog(q: string, signal?: AbortSignal) {
       return (await search({ client, query: { q }, signal, throwOnError: true })).data;
@@ -16,6 +21,9 @@ export function createLibraryApi(getAccessToken?: () => Promise<string>) {
     },
     async addLibraryBook(workId: string, editionId: string) {
       return (await add({ client, body: { workId, editionId }, throwOnError: true })).data;
+    },
+    async markBookAsRead(workId: string, editionId: string) {
+      await markRead({ client, body: { workId, editionId }, throwOnError: true });
     },
   };
 }

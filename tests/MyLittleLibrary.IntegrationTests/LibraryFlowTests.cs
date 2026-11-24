@@ -9,6 +9,7 @@ namespace MyLittleLibrary.IntegrationTests;
 public sealed class LibraryFlowTests
 {
     private const string BooksPath = "/api/library/books";
+    private const string ReadingHistoryPath = "/api/reading-history/books";
     private const string WorkId = "OL10000W";
     private const string EditionsPath = $"/api/catalog/works/{WorkId}/editions";
     private const string EditionId = "OL100001M";
@@ -254,6 +255,89 @@ public sealed class LibraryFlowTests
     }
 
     [Fact]
+    public async Task MarkingAnUnshelvedEditionImportsTheWholeWorkAndKeepsReadStatePrivate()
+    {
+        await using var api = new ApiScenario(Title, Title);
+        api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
+        using var marked = await MarkReadAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        AssertImportRequests(api.Catalog.Requests);
+        Assert.Equal(5, await DocumentCountAsync(api));
+        Assert.Empty(await ShelfAsync(api.Client));
+        using (var session = api.Store.OpenAsyncSession())
+        {
+            var work = Assert.IsType<LibraryWork>(await session.LoadAsync<LibraryWork>(LibraryWork.DocumentId(WorkId), Ct));
+            Assert.Equal(Title, work.Title);
+            var editions = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
+            Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
+            Assert.All(editions, edition => Assert.Equal(WorkId, edition.WorkId));
+            var entry = Assert.Single(await session.Advanced.LoadStartingWithAsync<ReadingHistoryEntry>("ReadingHistoryEntries/", token: Ct));
+            Assert.Equal((WorkId, EditionId), (entry.WorkId, entry.EditionId));
+        }
+
+        var ownerResults = Assert.Single(await SearchAsync(api.Client, Title)).Editions;
+        Assert.All(ownerResults, e =>
+        {
+            Assert.Equal(e.EditionId == EditionId, e.AlreadyRead);
+            Assert.False(e.AlreadyAdded);
+        });
+        using var other = api.CreateClient("reader");
+        Assert.All(Assert.Single(await SearchAsync(other, Title)).Editions, e => Assert.False(e.AlreadyRead));
+
+        var calls = api.Catalog.Requests.Count;
+        using var repeated = await MarkReadAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        Assert.Equal(5, await DocumentCountAsync(api));
+        await AddAsync(api.Client, EditionId);
+        await AddAsync(api.Client, IllustratedId);
+        using var alreadyShelved = await MarkReadAsync(api.Client, IllustratedId);
+        Assert.Equal(HttpStatusCode.NoContent, alreadyShelved.StatusCode);
+        Assert.Equal(calls, api.Catalog.Requests.Count);
+        Assert.Equal(8, await DocumentCountAsync(api));
+
+        using var browsed = await api.Client.GetAsync(EditionsPath, Ct);
+        Assert.Collection((await ReadAsync<CatalogEditionPage>(browsed, HttpStatusCode.OK)).Editions,
+            e => Assert.True(e.AlreadyRead && e.AlreadyAdded),
+            e => Assert.True(e.AlreadyRead && e.AlreadyAdded));
+    }
+
+    [Fact]
+    public async Task MarkAsReadRejectsInvalidSelectionsAndLeavesNoWritesOnProviderFailure()
+    {
+        await using var api = new ApiScenario();
+        using var invalid = await MarkReadAsync(api.Client, "invalid");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Empty(api.Catalog.Requests);
+        using var mismatch = await MarkReadAsync(api.Client, PaperbackId);
+        Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
+        Assert.Equal(0, await DocumentCountAsync(api));
+
+        api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
+        api.Catalog.FailEditionOffset = 2;
+        using var failed = await MarkReadAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+        AssertImportRequests(api.Catalog.Requests.Skip(2));
+        Assert.Equal(0, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task ConcurrentShelfAndReadWritesShareOneImportButKeepSeparateEntries()
+    {
+        await using var api = new ApiScenario();
+        var add = PostAsync(api.Client, EditionId);
+        var mark = MarkReadAsync(api.Client, EditionId);
+        var repeat = MarkReadAsync(api.Client, EditionId);
+        await Task.WhenAll(add, mark, repeat);
+        using var added = await add;
+        using var marked = await mark;
+        using var repeated = await repeat;
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        Assert.Equal(5, await DocumentCountAsync(api));
+    }
+
+    [Fact]
     public async Task AnonymousRequestsAreRejectedBeforeCatalogAccessOrBodyBindingButHealthIsPublic()
     {
         await using var api = new ApiScenario();
@@ -262,10 +346,11 @@ public sealed class LibraryFlowTests
         using var editions = await anonymous.GetAsync(EditionsPath, Ct);
         using var gallery = await anonymous.GetAsync(BooksPath, Ct);
         using var add = await anonymous.PostAsync(BooksPath, null, Ct);
+        using var mark = await anonymous.PostAsync(ReadingHistoryPath, null, Ct);
         using var health = await anonymous.GetAsync("/health", Ct);
         using var swaggerUi = await anonymous.GetAsync("/swagger/index.html", Ct);
         using var swaggerDocument = await anonymous.GetAsync("/swagger/v1/swagger.json", Ct);
-        Assert.All(new[] { search, editions, gallery, add, swaggerUi, swaggerDocument },
+        Assert.All(new[] { search, editions, gallery, add, mark, swaggerUi, swaggerDocument },
             r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
         Assert.True(gallery.Headers.CacheControl is { Private: true, NoStore: true });
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
@@ -305,6 +390,9 @@ public sealed class LibraryFlowTests
 
     private static Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, string workId = WorkId) =>
         client.PostAsJsonAsync(BooksPath, new { workId, editionId }, Ct);
+
+    private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId) =>
+        client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId }, Ct);
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, HttpStatusCode expected)
     {

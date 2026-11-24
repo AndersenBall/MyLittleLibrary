@@ -58,6 +58,15 @@ library.MapPost("/books", LibraryHandler.AddBook)
     .Produces(StatusCodes.Status415UnsupportedMediaType)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+var readingHistory = api.MapGroup("/reading-history").WithTags("Reading History");
+readingHistory.MapPost("/books", ReadingHistoryHandler.MarkAsRead)
+    .WithName("markBookAsRead")
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status409Conflict)
+    .Produces(StatusCodes.Status415UnsupportedMediaType)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
 app.Run();
 
 public partial class Program { }
