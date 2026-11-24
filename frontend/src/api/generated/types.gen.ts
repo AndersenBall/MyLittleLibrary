@@ -14,6 +14,7 @@ export type CatalogEdition = {
     title: string;
     publishers: Array<string>;
     publicationDate?: string | null;
+    pageCount?: number | null;
     isbn10: Array<string>;
     isbn13: Array<string>;
     coverUrl?: string | null;

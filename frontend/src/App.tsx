@@ -64,10 +64,10 @@ function Library({ navigate, api }: { navigate: (route: Route) => void; api: Lib
   </section>;
 }
 
-function WorkResult({ work, api, renderEdition }: { work: CatalogWork; api: LibraryApi; renderEdition: (edition: CatalogEdition, authors: string[]) => ReactNode }) {
+function WorkResult({ work, api, initiallyOpen, renderEdition }: { work: CatalogWork; api: LibraryApi; initiallyOpen: boolean; renderEdition: (edition: CatalogEdition, authors: string[]) => ReactNode }) {
   const request = useRef<AbortController | null>(null);
   const loadMore = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [editions, setEditions] = useState(work.editions);
   const [nextOffset, setNextOffset] = useState<number | null>(0);
   const [loading, setLoading] = useState(false);
@@ -84,7 +84,10 @@ function WorkResult({ work, api, renderEdition }: { work: CatalogWork; api: Libr
       if (controller.signal.aborted) return;
       setEditions(current => {
         const byId = new Map(current.map(edition => [edition.editionId, edition]));
-        for (const edition of page.editions) byId.set(edition.editionId, edition);
+        for (const edition of page.editions) {
+          const pageCount = edition.pageCount ?? byId.get(edition.editionId)?.pageCount;
+          byId.set(edition.editionId, { ...edition, pageCount });
+        }
         return [...byId.values()];
       });
       setNextOffset(page.nextOffset ?? null);
@@ -105,7 +108,7 @@ function WorkResult({ work, api, renderEdition }: { work: CatalogWork; api: Libr
     return () => observer.disconnect();
   }, [open, loading, error, loadEditions]);
 
-  return <details className="work-group" onToggle={(event) => {
+  return <details className="work-group" open={open} onToggle={(event) => {
     const expanded = event.currentTarget.open;
     setOpen(expanded);
     if (expanded && nextOffset === 0 && !error) void loadEditions();
@@ -129,6 +132,7 @@ function WorkResult({ work, api, renderEdition }: { work: CatalogWork; api: Libr
 
 function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: LibraryApi }) {
   const [query, setQuery] = useState('');
+  const [submittedIsbn, setSubmittedIsbn] = useState('');
   const [results, setResults] = useState<CatalogWork[]>([]);
   const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -145,6 +149,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     searchRequest.current?.abort();
     const request = new AbortController();
     searchRequest.current = request;
+    setSubmittedIsbn(value.replace(/[\s-]/g, '').toUpperCase());
     setSearchState('loading'); setMessage('');
     try { const found = await api.searchCatalog(value, request.signal); if (!request.signal.aborted) { setResults(found); setSearchState('ready'); } }
     catch (error) { if (!request.signal.aborted) { setSearchState('error'); setMessage(apiMessage(error, 'Catalog search is unavailable right now. Please try again.')); } }
@@ -164,7 +169,9 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     {searchState === 'ready' && results.length === 0 && <div className="status-panel"><strong>No books found.</strong><span>Try a different title, author, or ISBN.</span></div>}
     {searchState === 'error' && <div className="status-panel error" role="alert"><strong>Search failed.</strong><span>{message}</span><button className="button button-secondary" type="button" onClick={() => void submit()}>Retry</button></div>}
     {searchState === 'ready' && results.length > 0 && <div className="results-list">
-      {results.map(work => <WorkResult key={work.workId} work={work} api={api} renderEdition={(result, authors) => {
+      {results.map(work => <WorkResult key={work.workId} work={work} api={api}
+        initiallyOpen={work.editions.some(edition => edition.isbn10.includes(submittedIsbn) || edition.isbn13.includes(submittedIsbn))}
+        renderEdition={(result, authors) => {
         const id = result.editionId;
         const isAdded = result.alreadyAdded || added.has(id);
         const isbn = result.isbn13?.[0] ?? result.isbn10?.[0];
@@ -173,7 +180,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
           <div className="result-details">
             <h3>{result.title}</h3>
             <p className="edition-details">
-              {[result.publicationDate, result.publishers[0], isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
+              {[result.publicationDate, result.publishers[0], result.pageCount && `${result.pageCount} pages`, isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
               <a href={result.editionUrl} target="_blank" rel="noreferrer">Open Library edition</a>
             </p>
             <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result)}>

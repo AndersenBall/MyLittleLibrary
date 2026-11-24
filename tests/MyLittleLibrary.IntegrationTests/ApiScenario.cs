@@ -134,6 +134,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     public string[][] EditionPages { get; set; } = [["OL100001M", "OL100002M"]];
     public int? FailEditionOffset { get; set; }
     public bool FailSearches { get; set; }
+    public bool IncludeGenres { get; set; }
+    public bool FailGenreLookup { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -145,6 +147,12 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         {
             "/search.json" => Search(uri),
             "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
+            "/books/OL100001M.json" when uri.Query.Length == 0 => Json(HobbitEdition),
+            "/tags/OL169T.json" when IncludeGenres && uri.Query.Length == 0 =>
+                Json("""{ "key": "/tags/OL169T", "name": "Fantasy", "tag_type": "genre" }"""),
+            "/tags/OL174T.json" when IncludeGenres && uri.Query.Length == 0 => FailGenreLookup
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : Json("""{ "key": "/tags/OL174T", "name": "Literary", "tag_type": "genre" }"""),
             "/works/OL10000W/editions.json" => Editions(uri),
             "/works/OL999W.json" or "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
@@ -190,10 +198,18 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         """);
     }
 
-    private static HttpResponseMessage Work() => Json("""
+    private HttpResponseMessage Work() => Json($$"""
         { "key": "/works/OL10000W", "title": "The Hobbit", "first_publish_date": "January 1938",
-          "authors": [{ "author": { "key": "/authors/OL26320A" } }], "subjects": ["Fantasy", "Dragons"] }
+          "authors": [{ "author": { "key": "/authors/OL26320A" } }], "subjects": ["Fantasy", "Dragons"]
+          {{(IncludeGenres ? """, "genres": [{ "key": "/tags/OL169T" }, { "key": "/tags/OL174T" }, { "key": "/tags/OL169T" }]""" : "")}}
+        }
         """);
+
+    private const string HobbitEdition = """
+        { "key": "/books/OL100001M", "title": "The Hobbit", "works": [{ "key": "/works/OL10000W" }],
+          "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "number_of_pages": 300,
+          "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }
+        """;
 
     private HttpResponseMessage Editions(Uri uri)
     {
@@ -209,8 +225,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             {
                 var docs = string.Join(',', page.Select(id => id switch
                 {
-                    "OL100001M" => """{ "key": "/books/OL100001M", "title": "The Hobbit", "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }""",
-                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015" }""",
+                    "OL100001M" => HobbitEdition,
+                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015", "number_of_pages": 352 }""",
                     "OL100004M" or "OL100005M" => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (French)", "languages": [{ "key": "/languages/fre" }] }""",
                     _ => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (paperback)" }"""
                 }));

@@ -36,7 +36,9 @@ The API creates the `MyLittleLibrary` RavenDB database on startup. RavenDB is re
 
 For Open Library's identified API rate limit, set `MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL` for Compose (or `OpenLibrary__ContactEmail` for a standalone API). Without a valid address the app uses the lower anonymous limit. Cover art comes from Open Library; books without an available cover display a placeholder.
 
-Search groups matching editions under their work. Expand a work and scroll to browse its editions one page at a time. Add does not require a prior search: it accepts `workId` and `editionId` as JSON. The first add verifies the selected edition belongs to the work, then saves the shared `LibraryWorks/{workId}` and every `LibraryBooks/{editionId}` from Open Library in a single transaction with the chosen private `LibraryEntries/{ownerKey}/{editionId}` shelf entry. If any catalog page fails, nothing from that add is saved; try again. Later adds of imported editions do not need Open Library. Repeat adds return the caller's existing entry without changing it.
+Search groups matching editions under their work. Expand a work and scroll to browse its editions one page at a time. Edition cards show an exact page count when Open Library provides one; an exact ISBN search opens the matching result with its count without waiting for edition browsing.
+
+Add does not require a prior search: it accepts `workId` and `editionId` as JSON. The first add verifies the selected edition belongs to the work, then saves the shared `LibraryWorks/{workId}` and every `LibraryBooks/{editionId}` from Open Library in a single transaction with the chosen private `LibraryEntries/{ownerKey}/{editionId}` shelf entry. `PageCount` is nullable and stored per edition. The work stores resolved `Genres` separately from its broad `Subjects`. If required catalog data cannot be fetched, nothing from that add is saved; try again. Later adds of imported editions do not need Open Library. Repeat adds return the caller's existing entry without changing it.
 
 The full-work import model requires a fresh database. There is no migration from the previous edition-only model.
 
