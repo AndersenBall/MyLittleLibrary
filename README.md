@@ -36,7 +36,7 @@ The API creates the `MyLittleLibrary` RavenDB database on startup. RavenDB is re
 
 For Open Library's identified API rate limit, set `MYLITTLELIBRARY_OPEN_LIBRARY_CONTACT_EMAIL` for Compose (or `OpenLibrary__ContactEmail` for a standalone API). Without a valid address the app uses the lower anonymous limit. Cover art comes from Open Library; books without an available cover display a placeholder.
 
-Search groups matching editions under their work. Expand a work and scroll to browse its editions one page at a time. Edition cards show an exact page count when Open Library provides one; an exact ISBN search opens the matching result with its count without waiting for edition browsing.
+Search groups matching editions under their work. Expand a work and scroll to browse its editions one page at a time. An exact ISBN search automatically opens the matching result. Edition cards show an exact page count once the corresponding edition page loads, when Open Library provides one.
 
 Add does not require a prior search: it accepts `workId` and `editionId` as JSON. The first add verifies the selected edition belongs to the work, then saves the shared `LibraryWorks/{workId}` and every `LibraryBooks/{editionId}` from Open Library in a single transaction with the chosen private `LibraryEntries/{ownerKey}/{editionId}` shelf entry. `PageCount` is nullable and stored per edition. If any catalog page fails, nothing from that add is saved; try again. Later adds of imported editions do not need Open Library. Repeat adds return the caller's existing entry without changing it.
 

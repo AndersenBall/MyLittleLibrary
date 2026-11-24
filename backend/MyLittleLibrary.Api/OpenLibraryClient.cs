@@ -28,15 +28,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             foreach (var doc in Array(work, "editions", "docs"))
             {
                 if (!IsEnglishEdition(doc) || ReadKey(doc, "/books/", EditionIdPattern()) is not { } id || editions.ContainsKey(id)) continue;
-                var edition = CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
-                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i")));
-                if (isbn is not null && (edition.Isbn10.Contains(isbn) || edition.Isbn13.Contains(isbn)))
-                {
-                    using var detail = await GetAsync($"books/{id}.json", ct);
-                    if (detail is not null && Text(detail.RootElement, "key") == $"/books/{id}")
-                        edition = edition with { PageCount = ReadPageCount(detail.RootElement) };
-                }
-                editions.Add(id, edition);
+                editions.Add(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
+                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
             }
             if (editions.Count > 0)
                 results.Add(new(workId, title, Texts(work, "author_name"),
