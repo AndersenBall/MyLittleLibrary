@@ -7,6 +7,7 @@ public sealed class LibraryBook
     public required string Title { get; init; }
     public required string[] Publishers { get; init; }
     public string? PublicationDate { get; init; }
+    public int? PageCount { get; init; }
     public required string[] Isbn10 { get; init; }
     public required string[] Isbn13 { get; init; }
     public string? CoverUrl { get; init; }
@@ -18,7 +19,7 @@ public sealed class LibraryBook
     public static LibraryBook From(CatalogEdition edition, string workId) => new()
     {
         EditionId = edition.EditionId, WorkId = workId, Title = edition.Title,
-        Publishers = edition.Publishers, PublicationDate = edition.PublicationDate,
+        Publishers = edition.Publishers, PublicationDate = edition.PublicationDate, PageCount = edition.PageCount,
         Isbn10 = edition.Isbn10, Isbn13 = edition.Isbn13, CoverUrl = edition.CoverUrl
     };
 }
@@ -26,7 +27,7 @@ public sealed class LibraryBook
 public sealed record GalleryBook(string EditionId, string Title, string[] Authors, string? CoverUrl, DateTimeOffset AddedAt);
 
 public sealed record CatalogEdition(string EditionId, string Title,
-    string[] Publishers, string? PublicationDate, string[] Isbn10, string[] Isbn13,
+    string[] Publishers, string? PublicationDate, int? PageCount, string[] Isbn10, string[] Isbn13,
     string? CoverUrl, string EditionUrl, bool AlreadyAdded);
 
 public sealed record CatalogEditionPage(CatalogEdition[] Editions, int? NextOffset);

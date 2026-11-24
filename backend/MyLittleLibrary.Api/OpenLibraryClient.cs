@@ -27,9 +27,16 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             var editions = new Dictionary<string, CatalogEdition>(StringComparer.Ordinal);
             foreach (var doc in Array(work, "editions", "docs"))
             {
-                if (!IsEnglishEdition(doc) || ReadKey(doc, "/books/", EditionIdPattern()) is not { } id) continue;
-                editions.TryAdd(id, CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
-                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i"))));
+                if (!IsEnglishEdition(doc) || ReadKey(doc, "/books/", EditionIdPattern()) is not { } id || editions.ContainsKey(id)) continue;
+                var edition = CreateEdition(id, Text(doc, "title") ?? title, Texts(doc, "publisher"),
+                    Texts(doc, "publish_date").FirstOrDefault(), Texts(doc, "isbn"), PositiveInt(Property(doc, "cover_i")));
+                if (isbn is not null && (edition.Isbn10.Contains(isbn) || edition.Isbn13.Contains(isbn)))
+                {
+                    using var detail = await GetAsync($"books/{id}.json", ct);
+                    if (detail is not null && Text(detail.RootElement, "key") == $"/books/{id}")
+                        edition = edition with { PageCount = ReadPageCount(detail.RootElement) };
+                }
+                editions.Add(id, edition);
             }
             if (editions.Count > 0)
                 results.Add(new(workId, title, Texts(work, "author_name"),
@@ -118,7 +125,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             editions.Add(id, CreateEdition(id, Text(doc, "title") ?? "Untitled edition", Texts(doc, "publishers"),
                 Text(doc, "publish_date"),
                 Texts(doc, "isbn_10").Concat(Texts(doc, "isbn_13")),
-                Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue)));
+                Array(doc, "covers").Select(PositiveInt).FirstOrDefault(x => x.HasValue), ReadPageCount(doc)));
         }
         return (count, [.. editions.Values], englishIds);
     }
@@ -149,10 +156,10 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     }
 
     private static CatalogEdition CreateEdition(string id, string title, string[] publishers,
-        string? date, IEnumerable<string> values, int? cover)
+        string? date, IEnumerable<string> values, int? cover, int? pageCount = null)
     {
         var isbns = values.Select(ParseIsbn).OfType<string>().Distinct().ToArray();
-        return new(id, title, publishers, date,
+        return new(id, title, publishers, date, pageCount,
             isbns.Where(i => i.Length == 10).ToArray(), isbns.Where(i => i.Length == 13).ToArray(),
             cover is null ? null : $"https://covers.openlibrary.org/b/id/{cover}-M.jpg?default=false",
             $"https://openlibrary.org/books/{id}", false);
@@ -177,6 +184,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var value) ? value : default;
     private static string? AsText(JsonElement e) => e.ValueKind == JsonValueKind.String && e.GetString()?.Trim() is { Length: > 0 } text ? text : null;
     private static string? Text(JsonElement obj, string name) => AsText(Property(obj, name));
+    private static int? ReadPageCount(JsonElement edition) => PositiveInt(Property(edition, "number_of_pages"));
     private static int? PositiveInt(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var i) && i > 0 ? i : null;
     private static int? ParseYear(string? value) => value is null ? null :
         int.TryParse(YearPattern().Match(value).Value, out var year) && year > 0 ? year : null;
