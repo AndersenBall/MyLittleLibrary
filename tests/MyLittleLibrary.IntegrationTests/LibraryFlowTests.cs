@@ -52,9 +52,10 @@ public sealed class LibraryFlowTests
         using (var session = api.Store.OpenAsyncSession())
         {
             var work = Assert.IsType<LibraryWork>(await session.LoadAsync<LibraryWork>($"LibraryWorks/{WorkId}", Ct));
-            Assert.Equal(1938, work.FirstPublicationYear); // Work details override the search projection.
+            Assert.Equal(Title, work.Title);
+            Assert.Equal(1937, work.FirstPublicationYear);
             Assert.Equal(Author, Assert.Single(work.Authors));
-            Assert.Equal(["Adventure", "Dragons", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
+            Assert.Equal(["Adventure", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
             Assert.Equal("Middle-earth", Assert.Single(work.Series));
             var editions = await session.Advanced.LoadStartingWithAsync<LibraryBook>("LibraryBooks/", token: Ct);
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
@@ -81,7 +82,7 @@ public sealed class LibraryFlowTests
         using var mismatch = await PostAsync(api.Client, PaperbackId, workId: "OL999W");
         Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
         Assert.Equal(6, await DocumentCountAsync(api));
-        Assert.Equal(6, api.Catalog.Requests.Count);
+        Assert.Equal(5, api.Catalog.Requests.Count);
     }
 
     [Fact]
@@ -114,7 +115,6 @@ public sealed class LibraryFlowTests
 
         await AddAsync(api.Client, EditionId);
         Assert.Collection(api.Catalog.Requests.Skip(3),
-            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
             uri => Assert.Equal("/search.json", uri.AbsolutePath),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery),
@@ -151,6 +151,7 @@ public sealed class LibraryFlowTests
         Assert.Empty(api.Catalog.Requests);
         using var missingWork = await PostAsync(api.Client, EditionId, workId: "OL999W");
         Assert.Equal(HttpStatusCode.NotFound, missingWork.StatusCode);
+        Assert.Equal("/search.json", Assert.Single(api.Catalog.Requests).AbsolutePath);
         using var missingEditions = await api.Client.GetAsync("/api/catalog/works/OL999W/editions", Ct);
         Assert.Equal(HttpStatusCode.NotFound, missingEditions.StatusCode);
         Assert.Equal(2, api.Catalog.Requests.Count);
@@ -171,7 +172,7 @@ public sealed class LibraryFlowTests
 
         api.Catalog.FailEditionOffset = null;
         var added = await AddAsync(api.Client, EditionId);
-        AssertImportRequests(api.Catalog.Requests.Skip(4));
+        AssertImportRequests(api.Catalog.Requests.Skip(3));
         Assert.Equal(5, await DocumentCountAsync(api));
         Assert.Equal(CatalogCoverUrl, added.CoverUrl);
         Assert.Equal(CatalogCoverUrl, Assert.Single(await ShelfAsync(api.Client)).CoverUrl);
@@ -186,7 +187,7 @@ public sealed class LibraryFlowTests
         using var rejected = await PostAsync(api.Client, EditionId);
         Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
         Assert.Equal(0, await DocumentCountAsync(api));
-        Assert.Equal(4, api.Catalog.Requests.Count);
+        Assert.Equal(3, api.Catalog.Requests.Count);
     }
 
     [Fact]
@@ -311,7 +312,6 @@ public sealed class LibraryFlowTests
         (await api.Store.Maintenance.SendAsync(new GetStatisticsOperation(), Ct)).CountOfDocuments;
 
     private static void AssertImportRequests(IEnumerable<Uri> requests) => Assert.Collection(requests,
-        uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
         uri => Assert.Equal("/search.json", uri.AbsolutePath), // The fixture verifies the exact work-key projection.
         uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
         uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery));

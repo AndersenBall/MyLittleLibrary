@@ -128,7 +128,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
     private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
-    private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
+    private const string WorkMetadataFields = "key,title,author_name,subject,series_name,first_publish_year";
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
     public string[][] EditionPages { get; set; } = [["OL100001M", "OL100002M"]];
@@ -144,9 +144,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         return Task.FromResult(uri.AbsolutePath switch
         {
             "/search.json" => Search(uri),
-            "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
             "/works/OL10000W/editions.json" => Editions(uri),
-            "/works/OL999W.json" or "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
+            "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
         });
     }
@@ -157,12 +156,12 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         Assert.Equal(3, query.Count);
         var search = Assert.IsType<string>(Assert.Single(query["q"]));
         var fields = Assert.IsType<string>(Assert.Single(query["fields"]));
-        if (search == "key:/works/OL10000W")
+        if (search is "key:/works/OL10000W" or "key:/works/OL999W")
         {
             Assert.Equal("1", Assert.Single(query["limit"]));
             Assert.Equal(WorkMetadataFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
-            return Json("""
-            { "docs": [{ "key": "/works/OL10000W", "author_name": ["J. R. R. Tolkien"],
+            return search == "key:/works/OL999W" ? Json("""{ "docs": [] }""") : Json("""
+            { "docs": [{ "key": "/works/OL10000W", "title": "The Hobbit", "author_name": ["J. R. R. Tolkien"],
               "subject": ["Fantasy", "Adventure"], "series_name": ["Middle-earth"], "first_publish_year": 1937 }] }
             """);
         }
@@ -189,11 +188,6 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         }] }
         """);
     }
-
-    private static HttpResponseMessage Work() => Json("""
-        { "key": "/works/OL10000W", "title": "The Hobbit", "first_publish_date": "January 1938",
-          "authors": [{ "author": { "key": "/authors/OL26320A" } }], "subjects": ["Fantasy", "Dragons"] }
-        """);
 
     private const string HobbitEdition = """
         { "key": "/books/OL100001M", "title": "The Hobbit", "works": [{ "key": "/works/OL10000W" }],
