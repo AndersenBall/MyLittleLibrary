@@ -48,7 +48,7 @@ internal static class LibraryAuthentication
             });
         }
 
-        builder.Services.AddAuthorizationBuilder().AddDefaultPolicy("LibraryOwner", policy => policy
+        builder.Services.AddAuthorizationBuilder().AddFallbackPolicy("LibraryOwner", policy => policy
             .RequireAuthenticatedUser().RequireClaim("iss").RequireClaim("sub"));
     }
 

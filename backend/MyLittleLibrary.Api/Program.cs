@@ -1,7 +1,6 @@
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
-using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
@@ -10,7 +9,6 @@ builder.Services.AddSwaggerGen(options =>
     options.SupportNonNullableReferenceTypes();
     options.NonNullableReferenceTypesAsRequired();
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "JWT" });
-    options.OperationFilter<LibraryAuthorizationOperationFilter>();
 });
 builder.AddLibraryAuthentication();
 builder.AddRavenDb();
@@ -26,28 +24,36 @@ builder.Services.AddHttpClient<OpenLibraryClient>(http =>
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI();
-
 app.UseRouting();
 app.Use(async (context, next) =>
 {
-    if (context.GetEndpoint()?.Metadata.GetMetadata<IAuthorizeData>() is not null)
+    if (context.GetEndpoint() is { } endpoint && endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null)
         context.Response.Headers.CacheControl = "private, no-store";
     await next(context);
 });
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/health", () => Results.Ok());
-app.MapGet("/api/catalog/search", LibraryHandler.SearchCatalog)
-    .WithName("searchCatalog").WithTags("Catalog").RequireAuthorization().ProducesProblem(503);
-app.MapGet("/api/catalog/works/{workId}/editions", LibraryHandler.GetCatalogEditions)
-    .WithName("getCatalogEditions").WithTags("Catalog").RequireAuthorization()
-    .ProducesProblem(400).ProducesProblem(404).ProducesProblem(503);
+app.UseSwagger();
+app.UseSwaggerUI();
 
-var library = app.MapGroup("/api/library").WithTags("Library").RequireAuthorization();
-library.MapGet("/books", LibraryHandler.GetBooks).WithName("getLibraryBooks");
+app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
+
+var api = app.MapGroup("/api");
+
+var catalog = api.MapGroup("/catalog").WithTags("Catalog");
+catalog.MapGet("/search", LibraryHandler.SearchCatalog)
+    .WithName("searchCatalog")
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+catalog.MapGet("/works/{workId}/editions", LibraryHandler.GetCatalogEditions)
+    .WithName("getCatalogEditions")
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status404NotFound)
+    .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+
+var library = api.MapGroup("/library").WithTags("Library");
+library.MapGet("/books", LibraryHandler.GetBooks)
+    .WithName("getLibraryBooks");
 library.MapPost("/books", LibraryHandler.AddBook)
     .WithName("addLibraryBook")
     .Produces<GalleryBook>(StatusCodes.Status201Created)
@@ -60,15 +66,3 @@ library.MapPost("/books", LibraryHandler.AddBook)
 app.Run();
 
 public partial class Program { }
-
-internal sealed class LibraryAuthorizationOperationFilter : IOperationFilter
-{
-    public void Apply(OpenApiOperation operation, OperationFilterContext context)
-    {
-        if (!context.ApiDescription.ActionDescriptor.EndpointMetadata.OfType<IAuthorizeData>().Any()) return;
-
-        operation.Security = [new() { [new OpenApiSecuritySchemeReference("Bearer", context.Document)] = [] }];
-        operation.Responses ??= new();
-        operation.Responses.TryAdd("401", new OpenApiResponse { Description = "Unauthorized" });
-    }
-}
