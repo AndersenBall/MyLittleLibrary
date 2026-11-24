@@ -1,17 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Mvc;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Attachments;
-using Raven.Client.Documents.Operations.Attachments;
 using Raven.Client.Exceptions;
-using SkiaSharp;
 
 public static class LibraryHandler
 {
-    public const long MaxCoverBytes = 5 * 1024 * 1024;
-    public const long MaxAddRequestBytes = MaxCoverBytes + 64 * 1024;
-
     public static async Task<Results<Ok<CatalogWork[]>, ValidationProblem, ProblemHttpResult>> SearchCatalog(
         string? q, ClaimsPrincipal user, OpenLibraryClient catalog, IDocumentStore store, CancellationToken ct)
     {
@@ -84,24 +77,22 @@ public static class LibraryHandler
     }
 
     public static async Task<Results<Ok<GalleryBook>, JsonHttpResult<GalleryBook>, ProblemHttpResult>> AddBook(
-        [FromForm] AddLibraryBookRequest input,
-        HttpRequest request,
+        AddLibraryBookRequest input,
         ClaimsPrincipal user,
         IDocumentStore store,
         OpenLibraryClient catalog,
         CancellationToken cancellationToken)
     {
-        var workId = input.WorkId.Trim();
-        var editionId = input.EditionId.Trim();
-        if (!LibraryWork.IsValidWorkId(workId) || !LibraryBook.IsValidEditionId(editionId))
+        var workId = input.WorkId?.Trim();
+        var editionId = input.EditionId?.Trim();
+        if (workId is null || editionId is null || !LibraryWork.IsValidWorkId(workId) || !LibraryBook.IsValidEditionId(editionId))
             return TypedResults.Problem("Valid Open Library work and edition IDs are required.", statusCode: 400);
 
         var ownerKey = LibraryAuthentication.OwnerKey(user);
         var bookId = LibraryBook.DocumentId(editionId);
         var workDocumentId = LibraryWork.DocumentId(workId);
         var entryId = LibraryEntry.DocumentId(ownerKey, editionId);
-        ValidatedCover? validated = null;
-        var coverChecked = false;
+
         WorkImport? import = null;
         string? importError = null;
         for (var attempt = 0; attempt < 3; attempt++)
@@ -120,21 +111,6 @@ public static class LibraryHandler
             }
             if (book is null && importError is not null)
                 return TypedResults.Problem(title: importError, statusCode: 503);
-
-            if (!coverChecked)
-            {
-                var files = request.Form.Files; // Form binding has already read and cached the form.
-                if (files.Count > 1 || (files.Count == 1 && input.Cover is null))
-                    return TypedResults.Problem("Supply at most one cover image.", statusCode: 400);
-                if (input.Cover is not null)
-                {
-                    var result = await ValidateCoverAsync(input.Cover, cancellationToken);
-                    if (!result.IsValid)
-                        return TypedResults.Problem(result.Error, statusCode: result.StatusCode);
-                    validated = result.Cover!;
-                }
-                coverChecked = true;
-            }
 
             // One atomic batch. Empty change vectors make every write create-only.
             if (book is null)
@@ -158,11 +134,8 @@ public static class LibraryHandler
                     if (imported.EditionId == editionId) book = imported;
                 }
             }
-            entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = DateTimeOffset.UtcNow, HasLocalCover = validated is not null };
+            entry = new LibraryEntry { OwnerKey = ownerKey, BookId = bookId, AddedAt = DateTimeOffset.UtcNow };
             await session.StoreAsync(entry, string.Empty, entryId, cancellationToken);
-            using var coverBytes = validated is null ? null : new MemoryStream(validated.Bytes, writable: false);
-            if (coverBytes is not null)
-                session.Advanced.Attachments.Store(entryId, LibraryEntry.CoverAttachmentName, coverBytes, validated!.ContentType);
 
             try
             {
@@ -176,52 +149,4 @@ public static class LibraryHandler
         }
         return TypedResults.Problem("The library write conflicted and could not be read back.", statusCode: 409);
     }
-
-    public static async Task<Results<FileStreamHttpResult, NotFound>> GetCover(
-        string editionId, ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
-    {
-        if (!LibraryBook.IsValidEditionId(editionId)) return TypedResults.NotFound();
-        var entryId = LibraryEntry.DocumentId(LibraryAuthentication.OwnerKey(user), editionId);
-        var attachment = await store.Operations.SendAsync(new GetAttachmentOperation(
-            entryId, LibraryEntry.CoverAttachmentName, AttachmentType.Document, null), token: cancellationToken);
-        if (attachment is null) return TypedResults.NotFound();
-        return TypedResults.Stream(attachment.Stream, attachment.Details.ContentType);
-    }
-
-    private static async Task<CoverValidationResult> ValidateCoverAsync(IFormFile file, CancellationToken cancellationToken)
-    {
-        if (file.Length > MaxCoverBytes) return CoverValidationResult.Invalid("Cover must be 5 MiB or smaller.", 413);
-        if (file.Length == 0) return CoverValidationResult.Invalid("The cover is empty.", 400);
-        await using var input = file.OpenReadStream();
-        using var bytes = new MemoryStream(capacity: checked((int)file.Length));
-        await input.CopyToAsync(bytes, cancellationToken);
-        var image = bytes.ToArray();
-        using var data = SKData.CreateCopy(image);
-        using var codec = SKCodec.Create(data);
-        if (codec is null) return CoverValidationResult.Invalid("The cover is not a valid image.", 400);
-        var type = codec.EncodedFormat switch
-        {
-            SKEncodedImageFormat.Jpeg => "image/jpeg",
-            SKEncodedImageFormat.Png => "image/png",
-            SKEncodedImageFormat.Webp => "image/webp",
-            _ => null
-        };
-        if (type is null) return CoverValidationResult.Invalid("Only JPEG, PNG, and WebP covers are accepted.", 415);
-        if (codec.Info.Width <= 0 || codec.Info.Height <= 0 ||
-            codec.Info.Width > 6000 || codec.Info.Height > 6000 ||
-            (long)codec.Info.Width * codec.Info.Height > 12_000_000)
-            return CoverValidationResult.Invalid("The cover dimensions are too large.", 400);
-        using var decoded = new SKBitmap(codec.Info);
-        if (decoded.GetPixels() == IntPtr.Zero || codec.GetPixels(decoded.Info, decoded.GetPixels()) != SKCodecResult.Success)
-            return CoverValidationResult.Invalid("The cover is not a complete image.", 400);
-        return CoverValidationResult.Valid(image, type);
-    }
-
-    private sealed record CoverValidationResult(ValidatedCover? Cover, string? Error, int StatusCode)
-    {
-        public bool IsValid => Cover is not null;
-        public static CoverValidationResult Valid(byte[] bytes, string contentType) => new(new ValidatedCover(bytes, contentType), null, 200);
-        public static CoverValidationResult Invalid(string error, int statusCode) => new(null, error, statusCode);
-    }
-    private sealed record ValidatedCover(byte[] Bytes, string ContentType);
 }

@@ -178,23 +178,13 @@
         "operationId": "addLibraryBook",
         "requestBody": {
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AddLibraryBookRequest"
-              },
-              "encoding": {
-                "workId": {
-                  "style": "form"
-                },
-                "editionId": {
-                  "style": "form"
-                },
-                "cover": {
-                  "style": "form"
-                }
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -227,16 +217,6 @@
               }
             }
           },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -257,25 +237,8 @@
               }
             }
           },
-          "413": {
-            "description": "Content Too Large",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "415": {
-            "description": "Unsupported Media Type",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
+            "description": "Unsupported Media Type"
           },
           "503": {
             "description": "Service Unavailable",
@@ -283,60 +246,6 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "Bearer": [ ]
-          }
-        ]
-      }
-    },
-    "/api/library/books/{editionId}/cover": {
-      "get": {
-        "tags": [
-          "Library"
-        ],
-        "operationId": "getLibraryCover",
-        "parameters": [
-          {
-            "name": "editionId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "404": {
-            "description": "Not Found"
-          },
-          "200": {
-            "description": "OK",
-            "content": {
-              "image/jpeg": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/png": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/webp": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
                 }
               }
             }
@@ -375,17 +284,10 @@
         "type": "object",
         "properties": {
           "workId": {
-            "minLength": 1,
             "type": "string"
           },
           "editionId": {
-            "minLength": 1,
             "type": "string"
-          },
-          "cover": {
-            "type": "string",
-            "format": "binary",
-            "nullable": true
           }
         },
         "additionalProperties": false

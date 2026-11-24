@@ -25,30 +25,6 @@ function Cover({ src, title, authors, className = '', lazy = false }: { src?: st
   );
 }
 
-function GalleryCover({ book, api }: { book: GalleryBook; api: LibraryApi }) {
-  const { editionId, title, authors, coverUrl } = book;
-  const isPrivate = coverUrl === `/api/library/books/${editionId}/cover`;
-  const [imageUrl, setImageUrl] = useState<string>();
-
-  useEffect(() => {
-    if (!isPrivate) return;
-    const controller = new AbortController();
-    let objectUrl: string | undefined;
-    setImageUrl(undefined);
-    void api.getLibraryCover(editionId, controller.signal).then((image) => {
-      if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(image);
-      setImageUrl(objectUrl);
-    }).catch(() => { /* Use the existing cover fallback. */ });
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [api, editionId, isPrivate]);
-
-  return <Cover src={isPrivate ? imageUrl : coverUrl} title={title} authors={authors} />;
-}
-
 function Shell({ route, navigate, signOut, children }: { route: Route; navigate: (route: Route) => void; signOut?: () => void; children: ReactNode }) {
   return (
     <div className="app-shell">
@@ -84,7 +60,7 @@ function Library({ navigate, api }: { navigate: (route: Route) => void; api: Lib
     {state === 'loading' && <div className="status-panel" role="status"><span className="spinner" />Loading your library…</div>}
     {state === 'error' && <div className="status-panel error" role="alert"><strong>We couldn’t load your library.</strong><span>Check your connection and try again.</span><button className="button button-secondary" type="button" onClick={() => void load()}>Retry</button></div>}
     {state === 'ready' && books.length === 0 && <div className="empty-state"><div className="empty-art"><span>✦</span><span>▱</span><span>✧</span></div><h2>Your shelf is waiting</h2><p>Search the catalog to find your next favorite book, then add it here.</p><button className="button button-primary" type="button" onClick={() => navigate('add')}>Find a book</button></div>}
-    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map((book) => <article className="book-card" key={book.editionId}><GalleryCover book={book} api={api} /><div className="book-info"><h2>{book.title}</h2><p>{book.authors.join(', ') || 'Unknown author'}</p></div></article>)}</div>}
+    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map((book) => <article className="book-card" key={book.editionId}><Cover src={book.coverUrl} title={book.title} authors={book.authors} /><div className="book-info"><h2>{book.title}</h2><p>{book.authors.join(', ') || 'Unknown author'}</p></div></article>)}</div>}
   </section>;
 }
 
@@ -159,7 +135,7 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
   const searchRequest = useRef<AbortController | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
-  const [pendingCovers, setPendingCovers] = useState<Record<string, File | undefined>>({});
+
   useEffect(() => () => searchRequest.current?.abort(), []);
 
   async function submit(event?: FormEvent) {
@@ -173,9 +149,9 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
     try { const found = await api.searchCatalog(value, request.signal); if (!request.signal.aborted) { setResults(found); setSearchState('ready'); } }
     catch (error) { if (!request.signal.aborted) { setSearchState('error'); setMessage(apiMessage(error, 'Catalog search is unavailable right now. Please try again.')); } }
   }
-  async function add(workId: string, result: CatalogEdition, file?: File) {
+  async function add(workId: string, result: CatalogEdition) {
     setAdding(result.editionId); setMessage('');
-    try { await api.addLibraryBook(workId, result.editionId, file); setAdded((current) => new Set(current).add(result.editionId)); }
+    try { await api.addLibraryBook(workId, result.editionId); setAdded((current) => new Set(current).add(result.editionId)); }
     catch (error) { setMessage(apiMessage(error, `Couldn’t add “${result.title}”. Please try again.`)); }
     finally { setAdding(null); }
   }
@@ -191,7 +167,6 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
       {results.map(work => <WorkResult key={work.workId} work={work} api={api} renderEdition={(result, authors) => {
         const id = result.editionId;
         const isAdded = result.alreadyAdded || added.has(id);
-        const cover = pendingCovers[id];
         const isbn = result.isbn13?.[0] ?? result.isbn10?.[0];
         return <article className="edition-row" key={id}>
           <Cover src={result.coverUrl} title={result.title} authors={authors} className="result-cover" lazy />
@@ -201,16 +176,9 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
               {[result.publicationDate, result.publishers[0], isbn && `ISBN ${isbn}`].filter(Boolean).join(' · ')}{' '}
               <a href={result.editionUrl} target="_blank" rel="noreferrer">Open Library edition</a>
             </p>
-            <div className="result-actions">
-              <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result, cover)}>
-                {adding === id ? 'Adding…' : isAdded ? '✓ Added' : 'Add to Library'}
-              </button>
-              {!isAdded && <label className="file-label">Use my own cover<input type="file" accept="image/jpeg,image/png,image/webp" disabled={adding !== null} onChange={(event) => {
-                const file = event.target.files?.[0];
-                setPendingCovers((current) => ({ ...current, [id]: file }));
-              }} /></label>}
-            </div>
-            {!isAdded && cover && <p className="edition-details">{cover.name} <button type="button" disabled={adding !== null} onClick={() => setPendingCovers((current) => ({ ...current, [id]: undefined }))}>Remove cover</button></p>}
+            <button className={`button ${isAdded ? 'button-added' : 'button-primary'}`} type="button" disabled={isAdded || adding !== null} onClick={() => void add(work.workId, result)}>
+              {adding === id ? 'Adding…' : isAdded ? '✓ Added' : 'Add to Library'}
+            </button>
           </div>
         </article>;
       }} />)}

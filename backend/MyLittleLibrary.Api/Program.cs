@@ -1,10 +1,7 @@
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
-
-const string addLibraryBook = "addLibraryBook";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
@@ -41,33 +38,6 @@ app.Use(async (context, next) =>
 });
 app.UseAuthentication();
 app.UseAuthorization();
-app.Use(async (context, next) =>
-{
-    // Run before the endpoint delegate reads and binds the multipart form.
-    if (context.GetEndpoint()?.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName != addLibraryBook)
-    {
-        await next(context);
-        return;
-    }
-
-    var request = context.Request;
-    if (request.Headers["Sec-Fetch-Site"] == "cross-site")
-    {
-        await Results.Problem("Add books from the library application.", statusCode: 403).ExecuteAsync(context);
-        return;
-    }
-    if (!request.HasFormContentType || !request.ContentType!.StartsWith("multipart/form-data;", StringComparison.OrdinalIgnoreCase))
-    {
-        await Results.Problem("Multipart form data is required.", statusCode: 415).ExecuteAsync(context);
-        return;
-    }
-    if (request.ContentLength > LibraryHandler.MaxAddRequestBytes)
-    {
-        await Results.Problem("Cover must be 5 MiB or smaller.", statusCode: 413).ExecuteAsync(context);
-        return;
-    }
-    await next(context);
-});
 
 app.MapGet("/health", () => Results.Ok());
 app.MapGet("/api/catalog/search", LibraryHandler.SearchCatalog)
@@ -79,21 +49,13 @@ app.MapGet("/api/catalog/works/{workId}/editions", LibraryHandler.GetCatalogEdit
 var library = app.MapGroup("/api/library").WithTags("Library").RequireAuthorization();
 library.MapGet("/books", LibraryHandler.GetBooks).WithName("getLibraryBooks");
 library.MapPost("/books", LibraryHandler.AddBook)
-    .WithName(addLibraryBook)
-    .Accepts<AddLibraryBookRequest>("multipart/form-data")
-    .WithMetadata(new RequestSizeLimitAttribute(LibraryHandler.MaxAddRequestBytes))
-    .DisableAntiforgery() // No cookie authentication; cross-site browser requests are also rejected above.
+    .WithName("addLibraryBook")
     .Produces<GalleryBook>(StatusCodes.Status201Created)
     .ProducesProblem(StatusCodes.Status400BadRequest)
-    .ProducesProblem(StatusCodes.Status403Forbidden)
     .ProducesProblem(StatusCodes.Status404NotFound)
     .ProducesProblem(StatusCodes.Status409Conflict)
-    .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
-    .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
+    .Produces(StatusCodes.Status415UnsupportedMediaType)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
-library.MapGet("/books/{editionId}/cover", LibraryHandler.GetCover)
-    .WithName("getLibraryCover")
-    .Produces<FileResult>(StatusCodes.Status200OK, "image/jpeg", "image/png", "image/webp");
 
 app.Run();
 

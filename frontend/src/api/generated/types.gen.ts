@@ -7,7 +7,6 @@ export type ClientOptions = {
 export type AddLibraryBookRequest = {
     workId: string;
     editionId: string;
-    cover?: Blob | File | null;
 };
 
 export type CatalogEdition = {
@@ -164,7 +163,7 @@ export type GetLibraryBooksResponses = {
 export type GetLibraryBooksResponse = GetLibraryBooksResponses[keyof GetLibraryBooksResponses];
 
 export type AddLibraryBookData = {
-    body?: AddLibraryBookRequest;
+    body: AddLibraryBookRequest;
     path?: never;
     query?: never;
     url: '/api/library/books';
@@ -180,10 +179,6 @@ export type AddLibraryBookErrors = {
      */
     401: unknown;
     /**
-     * Forbidden
-     */
-    403: ProblemDetails;
-    /**
      * Not Found
      */
     404: ProblemDetails;
@@ -192,13 +187,9 @@ export type AddLibraryBookErrors = {
      */
     409: ProblemDetails;
     /**
-     * Content Too Large
-     */
-    413: ProblemDetails;
-    /**
      * Unsupported Media Type
      */
-    415: ProblemDetails;
+    415: unknown;
     /**
      * Service Unavailable
      */
@@ -219,35 +210,6 @@ export type AddLibraryBookResponses = {
 };
 
 export type AddLibraryBookResponse = AddLibraryBookResponses[keyof AddLibraryBookResponses];
-
-export type GetLibraryCoverData = {
-    body?: never;
-    path: {
-        editionId: string;
-    };
-    query?: never;
-    url: '/api/library/books/{editionId}/cover';
-};
-
-export type GetLibraryCoverErrors = {
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Not Found
-     */
-    404: unknown;
-};
-
-export type GetLibraryCoverResponses = {
-    /**
-     * OK
-     */
-    200: Blob | File;
-};
-
-export type GetLibraryCoverResponse = GetLibraryCoverResponses[keyof GetLibraryCoverResponses];
 
 export type GetHealthData = {
     body?: never;
