@@ -263,7 +263,11 @@ public sealed class LibraryFlowTests
         using var gallery = await anonymous.GetAsync(BooksPath, Ct);
         using var add = await anonymous.PostAsync(BooksPath, null, Ct);
         using var health = await anonymous.GetAsync("/health", Ct);
-        Assert.All(new[] { search, editions, gallery, add }, r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+        using var swaggerUi = await anonymous.GetAsync("/swagger/index.html", Ct);
+        using var swaggerDocument = await anonymous.GetAsync("/swagger/v1/swagger.json", Ct);
+        Assert.All(new[] { search, editions, gallery, add, swaggerUi, swaggerDocument },
+            r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
+        Assert.True(gallery.Headers.CacheControl is { Private: true, NoStore: true });
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
         Assert.Empty(api.Catalog.Requests);
         Assert.Equal(0, await DocumentCountAsync(api));
