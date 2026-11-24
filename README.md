@@ -26,7 +26,9 @@ From the repository root:
 docker compose -f compose.yaml -f compose.dev.yaml up --build
 ```
 
-Open My Library at <http://localhost:18081> or go to [Add Books](http://localhost:18081/add) to search Open Library by title, author, or ISBN. The Vite dev server reloads frontend edits and proxies `/health` and `/api` to the API. Swagger is at <http://localhost:18080/swagger>. Both host ports bind to loopback. Stop Compose with `Ctrl+C`.
+Open My Library at <http://localhost:18081> or go to [Add Books](http://localhost:18081/add) to search Open Library by title, author, or ISBN. The Vite dev server proxies `/health` and `/api` to the API. Swagger is at <http://localhost:18080/swagger>. Both host ports bind to loopback. Stop Compose with `Ctrl+C`.
+
+Hot reload is enabled for development with the Compose command above: Vite reloads frontend source edits, and `dotnet watch` applies backend source edits or automatically restarts the API when a change requires it. The source directories are mounted into their containers, so ordinary code edits do not require rebuilding the images. Backend hot reload is provided by the opt-in `compose.dev.yaml` override.
 
 The opt-in `compose.dev.yaml` uses one fixed server-side identity. Everyone with access to this private development instance uses the same dev shelf. Never expose this mode publicly. The API rejects `Auth__EnableLocalDevIdentity=true` in any environment other than `Local`. `/health` remains public.
 
