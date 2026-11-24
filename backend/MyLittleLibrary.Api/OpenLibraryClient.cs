@@ -9,7 +9,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
 {
     private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
     private const string SearchLanguageFilter = "language:eng";
-    private const string WorkMetadataFields = "key,author_name,subject,series_name,first_publish_year";
+    private const string WorkMetadataFields = "key,title,author_name,subject,series_name,first_publish_year";
 
     public async Task<CatalogWork[]> SearchAsync(string query, CancellationToken ct)
     {
@@ -49,24 +49,19 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     internal async Task<WorkImport?> FetchWorkAsync(string workId, CancellationToken ct)
     {
         var key = $"/works/{workId}";
-        using var response = await GetAsync($"works/{workId}.json", ct);
-        if (response is null) return null;
-        if (Text(response.RootElement, "key") != key ||
-            Text(response.RootElement, "title") is not { } title)
-            throw new CatalogUnavailableException();
-        var details = response.RootElement;
-        // The work document links to authors by ID; one exact-key projection resolves display names.
         using var projection = await SearchDocumentsAsync($"key:{key}", limit: 1, WorkMetadataFields, ct);
         var metadata = projection.RootElement.GetProperty("docs").EnumerateArray()
             .FirstOrDefault(doc => Text(doc, "key") == key);
+        if (metadata.ValueKind == JsonValueKind.Undefined) return null;
+        if (Text(metadata, "title") is not { } title) throw new CatalogUnavailableException();
         var work = new LibraryWork
         {
             WorkId = workId,
             Title = title,
             Authors = Texts(metadata, "author_name"),
-            Subjects = Texts(details, "subjects").Union(Texts(metadata, "subject")).ToArray(),
-            Series = Texts(details, "series").Union(Texts(metadata, "series_name")).ToArray(),
-            FirstPublicationYear = ParseYear(Text(details, "first_publish_date")) ?? PositiveInt(Property(metadata, "first_publish_year"))
+            Subjects = Texts(metadata, "subject"),
+            Series = Texts(metadata, "series_name"),
+            FirstPublicationYear = PositiveInt(Property(metadata, "first_publish_year"))
         };
         return new(work, await FetchAllEditionsAsync(workId, ct));
     }
@@ -179,8 +174,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     private static string? Text(JsonElement obj, string name) => AsText(Property(obj, name));
     private static int? ReadPageCount(JsonElement edition) => PositiveInt(Property(edition, "number_of_pages"));
     private static int? PositiveInt(JsonElement e) => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var i) && i > 0 ? i : null;
-    private static int? ParseYear(string? value) => value is null ? null :
-        int.TryParse(YearPattern().Match(value).Value, out var year) && year > 0 ? year : null;
+
     private static IEnumerable<JsonElement> Array(JsonElement obj, params string[] path)
     {
         foreach (var name in path) obj = Property(obj, name);
@@ -197,8 +191,6 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     private static partial Regex EditionIdPattern();
     [GeneratedRegex("\\AOL[0-9]{1,15}W\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WorkIdPattern();
-    [GeneratedRegex("\\b[0-9]{4}\\b", RegexOptions.CultureInvariant)]
-    private static partial Regex YearPattern();
 }
 
 public sealed class CatalogRateLimit(bool hasContact)
