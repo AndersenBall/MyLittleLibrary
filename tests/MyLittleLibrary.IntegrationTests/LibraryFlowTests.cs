@@ -299,6 +299,14 @@ public sealed class LibraryFlowTests
         Assert.Collection((await ReadAsync<CatalogEditionPage>(browsed, HttpStatusCode.OK)).Editions,
             e => Assert.True(e.AlreadyRead && e.AlreadyAdded),
             e => Assert.True(e.AlreadyRead && e.AlreadyAdded));
+        using var otherBrowsed = await other.GetAsync(EditionsPath, Ct);
+        var otherEditions = (await ReadAsync<CatalogEditionPage>(otherBrowsed, HttpStatusCode.OK)).Editions;
+        Assert.Equal([EditionId, IllustratedId], otherEditions.Select(e => e.EditionId));
+        Assert.All(otherEditions, e =>
+        {
+            Assert.False(e.AlreadyRead);
+            Assert.False(e.AlreadyAdded);
+        });
     }
 
     [Fact]

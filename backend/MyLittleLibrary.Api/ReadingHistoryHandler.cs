@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Session;
 
 public static class ReadingHistoryHandler
 {
@@ -17,12 +16,5 @@ public static class ReadingHistoryHandler
             return TypedResults.NoContent();
         }
         catch (BookWriteException ex) { return ex.ToProblem(); }
-    }
-
-    internal static async Task<HashSet<string>> LoadReadEditionsAsync(
-        string[] editionIds, string ownerKey, IAsyncDocumentSession session, CancellationToken ct)
-    {
-        var entries = await session.LoadAsync<ReadingHistoryEntry>(editionIds.Select(id => ReadingHistoryEntry.DocumentId(ownerKey, id)), ct);
-        return entries.Values.OfType<ReadingHistoryEntry>().Select(entry => entry.EditionId).ToHashSet();
     }
 }
