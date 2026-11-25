@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetReadBooksData, GetReadBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,6 +34,8 @@ export const addLibraryBook = <ThrowOnError extends boolean = false>(options: Op
 });
 
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });
+
+export const getReadBooks = <ThrowOnError extends boolean = false>(options?: Options<GetReadBooksData, ThrowOnError>): RequestResult<GetReadBooksResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetReadBooksResponses, unknown, ThrowOnError>({ url: '/api/reading-history/books', ...options });
 
 export const markBookAsRead = <ThrowOnError extends boolean = false>(options: Options<MarkBookAsReadData, ThrowOnError>): RequestResult<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError> => (options.client ?? client).post<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError>({
     url: '/api/reading-history/books',

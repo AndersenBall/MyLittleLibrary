@@ -259,7 +259,8 @@ public sealed class LibraryFlowTests
     {
         await using var api = new ApiScenario(Title, Title);
         api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
-        using var marked = await MarkReadAsync(api.Client, EditionId);
+        Assert.Empty(await ReadBooksAsync(api.Client));
+        using var marked = await MarkReadAsync(api.Client, EditionId, 3.5m);
         Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
         AssertImportRequests(api.Catalog.Requests);
         Assert.Equal(5, await DocumentCountAsync(api));
@@ -272,7 +273,7 @@ public sealed class LibraryFlowTests
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, edition => Assert.Equal(WorkId, edition.WorkId));
             var entry = Assert.Single(await session.Advanced.LoadStartingWithAsync<ReadingHistoryEntry>("ReadingHistoryEntries/", token: Ct));
-            Assert.Equal((WorkId, EditionId), (entry.WorkId, entry.EditionId));
+            Assert.Equal((WorkId, EditionId, (decimal?)3.5m), (entry.WorkId, entry.EditionId, entry.Rating));
         }
 
         var ownerResults = Assert.Single(await SearchAsync(api.Client, Title)).Editions;
@@ -283,17 +284,25 @@ public sealed class LibraryFlowTests
         });
         using var other = api.CreateClient("reader");
         Assert.All(Assert.Single(await SearchAsync(other, Title)).Editions, e => Assert.False(e.AlreadyRead));
+        Assert.Empty(await ReadBooksAsync(other));
+        var book = Assert.Single(await ReadBooksAsync(api.Client));
+        Assert.Equal((EditionId, Title, CatalogCoverUrl, (decimal?)3.5m),
+            (book.EditionId, book.Title, book.CoverUrl, book.Rating));
+        Assert.Equal("J. R. R. Tolkien", Assert.Single(book.Authors));
 
         var calls = api.Catalog.Requests.Count;
-        using var repeated = await MarkReadAsync(api.Client, EditionId);
+        using var repeated = await MarkReadAsync(api.Client, EditionId, 5);
         Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
         Assert.Equal(5, await DocumentCountAsync(api));
         await AddAsync(api.Client, EditionId);
         await AddAsync(api.Client, IllustratedId);
-        using var alreadyShelved = await MarkReadAsync(api.Client, IllustratedId);
+        using var alreadyShelved = await MarkReadAsync(api.Client, IllustratedId, 1);
         Assert.Equal(HttpStatusCode.NoContent, alreadyShelved.StatusCode);
         Assert.Equal(calls, api.Catalog.Requests.Count);
         Assert.Equal(8, await DocumentCountAsync(api));
+        Assert.Collection(await ReadBooksAsync(api.Client),
+            first => Assert.Equal((EditionId, (decimal?)3.5m), (first.EditionId, first.Rating)),
+            second => Assert.Equal((IllustratedId, (decimal?)1), (second.EditionId, second.Rating)));
 
         using var browsed = await api.Client.GetAsync(EditionsPath, Ct);
         Assert.Collection((await ReadAsync<CatalogEditionPage>(browsed, HttpStatusCode.OK)).Editions,
@@ -313,9 +322,17 @@ public sealed class LibraryFlowTests
     public async Task MarkAsReadRejectsInvalidSelectionsAndLeavesNoWritesOnProviderFailure()
     {
         await using var api = new ApiScenario();
+        using var missingRating = await api.Client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId = EditionId }, Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, missingRating.StatusCode);
+        foreach (var rating in new[] { 0.5m, 3.25m, 5.5m })
+        {
+            using var invalidRating = await MarkReadAsync(api.Client, EditionId, rating);
+            Assert.Equal(HttpStatusCode.BadRequest, invalidRating.StatusCode);
+        }
         using var invalid = await MarkReadAsync(api.Client, "invalid");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Empty(api.Catalog.Requests);
+        Assert.Equal(0, await DocumentCountAsync(api));
         using var mismatch = await MarkReadAsync(api.Client, PaperbackId);
         Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
         Assert.Equal(0, await DocumentCountAsync(api));
@@ -326,6 +343,24 @@ public sealed class LibraryFlowTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
         AssertImportRequests(api.Catalog.Requests.Skip(2));
         Assert.Equal(0, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task ReadGalleryShowsExistingEntriesWithoutInventingRatings()
+    {
+        await using var api = new ApiScenario(useLocalIdentity: true);
+        await AddAsync(api.Client, EditionId);
+        using (var session = api.Store.OpenAsyncSession())
+        {
+            var shelf = Assert.Single(await session.Advanced.LoadStartingWithAsync<LibraryEntry>("LibraryEntries/", token: Ct));
+            await session.StoreAsync(new ReadingHistoryEntry { OwnerKey = shelf.OwnerKey, WorkId = WorkId, EditionId = EditionId },
+                ReadingHistoryEntry.DocumentId(shelf.OwnerKey, EditionId), Ct);
+            await session.SaveChangesAsync(Ct);
+        }
+
+        var book = Assert.Single(await ReadBooksAsync(api.Client));
+        Assert.Equal(EditionId, book.EditionId);
+        Assert.Null(book.Rating);
     }
 
     [Fact]
@@ -353,14 +388,16 @@ public sealed class LibraryFlowTests
         using var search = await anonymous.GetAsync(SearchPath(Title), Ct);
         using var editions = await anonymous.GetAsync(EditionsPath, Ct);
         using var gallery = await anonymous.GetAsync(BooksPath, Ct);
+        using var readGallery = await anonymous.GetAsync(ReadingHistoryPath, Ct);
         using var add = await anonymous.PostAsync(BooksPath, null, Ct);
         using var mark = await anonymous.PostAsync(ReadingHistoryPath, null, Ct);
         using var health = await anonymous.GetAsync("/health", Ct);
         using var swaggerUi = await anonymous.GetAsync("/swagger/index.html", Ct);
         using var swaggerDocument = await anonymous.GetAsync("/swagger/v1/swagger.json", Ct);
-        Assert.All(new[] { search, editions, gallery, add, mark, swaggerUi, swaggerDocument },
+        Assert.All(new[] { search, editions, gallery, readGallery, add, mark, swaggerUi, swaggerDocument },
             r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
         Assert.True(gallery.Headers.CacheControl is { Private: true, NoStore: true });
+        Assert.True(readGallery.Headers.CacheControl is { Private: true, NoStore: true });
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
         Assert.Empty(api.Catalog.Requests);
         Assert.Equal(0, await DocumentCountAsync(api));
@@ -399,8 +436,14 @@ public sealed class LibraryFlowTests
     private static Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, string workId = WorkId) =>
         client.PostAsJsonAsync(BooksPath, new { workId, editionId }, Ct);
 
-    private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId) =>
-        client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId }, Ct);
+    private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId, decimal rating = 5) =>
+        client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId, rating }, Ct);
+
+    private static async Task<ReadGalleryBook[]> ReadBooksAsync(HttpClient client)
+    {
+        using var response = await client.GetAsync(ReadingHistoryPath, Ct);
+        return await ReadAsync<ReadGalleryBook[]>(response, HttpStatusCode.OK);
+    }
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, HttpStatusCode expected)
     {

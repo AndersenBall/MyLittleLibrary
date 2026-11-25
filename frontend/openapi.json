@@ -242,6 +242,27 @@
       }
     },
     "/api/reading-history/books": {
+      "get": {
+        "tags": [
+          "Reading History"
+        ],
+        "operationId": "getReadBooks",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReadGalleryBook"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "Reading History"
@@ -517,6 +538,7 @@
       "MarkBookAsReadRequest": {
         "required": [
           "editionId",
+          "rating",
           "workId"
         ],
         "type": "object",
@@ -526,6 +548,10 @@
           },
           "editionId": {
             "type": "string"
+          },
+          "rating": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false
@@ -556,6 +582,38 @@
           }
         },
         "additionalProperties": { }
+      },
+      "ReadGalleryBook": {
+        "required": [
+          "authors",
+          "editionId",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "editionId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "rating": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

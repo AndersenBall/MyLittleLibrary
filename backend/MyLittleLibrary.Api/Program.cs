@@ -59,6 +59,8 @@ library.MapPost("/books", LibraryHandler.AddBook)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
 var readingHistory = api.MapGroup("/reading-history").WithTags("Reading History");
+readingHistory.MapGet("/books", ReadingHistoryHandler.GetReadBooks)
+    .WithName("getReadBooks");
 readingHistory.MapPost("/books", ReadingHistoryHandler.MarkAsRead)
     .WithName("markBookAsRead")
     .ProducesProblem(StatusCodes.Status400BadRequest)
