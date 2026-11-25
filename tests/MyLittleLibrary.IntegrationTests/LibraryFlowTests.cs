@@ -9,6 +9,7 @@ namespace MyLittleLibrary.IntegrationTests;
 public sealed class LibraryFlowTests
 {
     private const string BooksPath = "/api/library/books";
+    private const string BookDetailsPath = "/api/books";
     private const string ReadingHistoryPath = "/api/reading-history/books";
     private const string WorkId = "OL10000W";
     private const string EditionsPath = $"/api/catalog/works/{WorkId}/editions";
@@ -58,6 +59,7 @@ public sealed class LibraryFlowTests
             Assert.Equal(Author, Assert.Single(work.Authors));
             Assert.Equal(["Adventure", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
             Assert.Equal("Middle-earth", Assert.Single(work.Series));
+            Assert.Equal("A description of the work.", work.Description);
             var editions = await session.Advanced.LoadStartingWithAsync<LibraryEdition>("LibraryEditions/", token: Ct);
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, e => Assert.Equal(WorkId, e.WorkId));
@@ -66,15 +68,18 @@ public sealed class LibraryFlowTests
             Assert.Equal(Isbn, Assert.Single(original.Isbn13));
             Assert.Equal("2012", original.PublicationDate);
             Assert.Equal(300, original.PageCount);
+            Assert.Equal("A description of this edition.", original.Description);
             var illustrated = Assert.Single(editions, e => e.EditionId == IllustratedId);
             Assert.Equal("May 2015", illustrated.PublicationDate);
             Assert.Equal(352, illustrated.PageCount);
+            Assert.Equal("An illustrated description.", illustrated.Description);
             var sparse = Assert.Single(editions, e => e.EditionId == PaperbackId);
             Assert.Empty(sparse.Isbn10);
             Assert.Empty(sparse.Isbn13);
             Assert.Null(sparse.CoverUrl);
             Assert.Null(sparse.PublicationDate);
             Assert.Null(sparse.PageCount);
+            Assert.Null(sparse.Description);
         }
 
         // The sibling was never returned to the browser.
@@ -364,6 +369,73 @@ public sealed class LibraryFlowTests
     }
 
     [Fact]
+    public async Task BookDetailsReportsLibraryReadAndRatingCombinationsWithFullMetadata()
+    {
+        await using var api = new ApiScenario(Title);
+        api.Catalog.EditionPages = [[EditionId, IllustratedId], [PaperbackId]];
+        await AddAsync(api.Client, EditionId);
+
+        using (var rawDetails = await api.Client.GetAsync(DetailsPath(EditionId), Ct))
+        {
+            var json = await rawDetails.Content.ReadAsStringAsync(Ct);
+            Assert.DoesNotContain("ownerKey", json, StringComparison.OrdinalIgnoreCase);
+        }
+        var libraryOnly = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((EditionId, true, false, (decimal?)null),
+            (libraryOnly.Edition.EditionId, libraryOnly.InLibrary, libraryOnly.IsRead, libraryOnly.Rating));
+        Assert.Equal((WorkId, Title, Author, 1937),
+            (libraryOnly.Work.WorkId, libraryOnly.Work.Title, Assert.Single(libraryOnly.Work.Authors), libraryOnly.Work.FirstPublicationYear));
+        Assert.Equal(["Adventure", "Fantasy"], libraryOnly.Work.Subjects.Order(StringComparer.Ordinal));
+        Assert.Equal(["Middle-earth"], libraryOnly.Work.Series);
+        Assert.Equal("A description of the work.", libraryOnly.Work.Description);
+        Assert.Equal(Title, libraryOnly.Edition.Title);
+        Assert.Equal(["Mariner Books"], libraryOnly.Edition.Publishers);
+        Assert.Equal("2012", libraryOnly.Edition.PublicationDate);
+        Assert.Equal(300, libraryOnly.Edition.PageCount);
+        Assert.Equal(["054792822X"], libraryOnly.Edition.Isbn10);
+        Assert.Equal([Isbn], libraryOnly.Edition.Isbn13);
+        Assert.Equal(CatalogCoverUrl, libraryOnly.Edition.CoverUrl);
+        Assert.Equal("A description of this edition.", libraryOnly.Edition.Description);
+
+        using var marked = await MarkReadAsync(api.Client, IllustratedId, 3.5m);
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        var readOnly = await DetailsAsync(api.Client, IllustratedId);
+        Assert.Equal((IllustratedId, false, true, (decimal?)3.5m),
+            (readOnly.Edition.EditionId, readOnly.InLibrary, readOnly.IsRead, readOnly.Rating));
+        Assert.Equal("An illustrated description.", readOnly.Edition.Description);
+
+        await AddAsync(api.Client, IllustratedId);
+        var libraryAndRead = await DetailsAsync(api.Client, IllustratedId);
+        Assert.Equal((IllustratedId, true, true, (decimal?)3.5m),
+            (libraryAndRead.Edition.EditionId, libraryAndRead.InLibrary, libraryAndRead.IsRead, libraryAndRead.Rating));
+    }
+
+    [Fact]
+    public async Task BookDetailsIsIsolatedToTheCurrentOwnerAndMissingBooksReturnNotFound()
+    {
+        await using var api = new ApiScenario(Title);
+        await AddAsync(api.Client, EditionId);
+        using var other = api.CreateClient("another-reader");
+
+        using var inaccessible = await other.GetAsync(DetailsPath(EditionId), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, inaccessible.StatusCode);
+
+        using var otherMarked = await MarkReadAsync(other, EditionId, 4);
+        Assert.Equal(HttpStatusCode.NoContent, otherMarked.StatusCode);
+        var otherDetails = await DetailsAsync(other, EditionId);
+        Assert.Equal((EditionId, false, true, (decimal?)4),
+            (otherDetails.Edition.EditionId, otherDetails.InLibrary, otherDetails.IsRead, otherDetails.Rating));
+        var ownerDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((EditionId, true, false, (decimal?)null),
+            (ownerDetails.Edition.EditionId, ownerDetails.InLibrary, ownerDetails.IsRead, ownerDetails.Rating));
+
+        using var missing = await api.Client.GetAsync(DetailsPath("OL999999M"), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        using var invalid = await api.Client.GetAsync(DetailsPath("not-an-edition"), Ct);
+        Assert.Equal(HttpStatusCode.NotFound, invalid.StatusCode);
+    }
+
+    [Fact]
     public async Task ConcurrentShelfAndReadWritesShareOneImportButKeepSeparateEntries()
     {
         await using var api = new ApiScenario();
@@ -425,6 +497,14 @@ public sealed class LibraryFlowTests
     {
         using var response = await client.GetAsync(BooksPath, Ct);
         return await ReadAsync<GalleryBook[]>(response, HttpStatusCode.OK);
+    }
+
+    private static string DetailsPath(string editionId) => $"{BookDetailsPath}/{editionId}";
+
+    private static async Task<BookDetails> DetailsAsync(HttpClient client, string editionId)
+    {
+        using var response = await client.GetAsync(DetailsPath(editionId), Ct);
+        return await ReadAsync<BookDetails>(response, HttpStatusCode.OK);
     }
 
     private static async Task<GalleryBook> AddAsync(HttpClient client, string editionId)

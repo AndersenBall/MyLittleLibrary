@@ -1,6 +1,6 @@
 import { createClient } from './api/generated/client';
-import { addLibraryBook as add, getCatalogEditions as editions, getLibraryBooks as list, getReadBooks as listRead, markBookAsRead as markRead, searchCatalog as search } from './api/generated/sdk.gen';
-export type { CatalogEdition, CatalogWork, GalleryBook, ReadGalleryBook } from './api/generated/types.gen';
+import { addLibraryBook as add, getBookDetails as details, getCatalogEditions as editions, getLibraryBooks as list, getReadBooks as listRead, markBookAsRead as markRead, searchCatalog as search } from './api/generated/sdk.gen';
+export type { BookDetails, CatalogEdition, CatalogWork, GalleryBook, ReadGalleryBook } from './api/generated/types.gen';
 
 export function createLibraryApi(getAccessToken?: () => Promise<string>) {
   const client = createClient({ baseUrl: window.location.origin, cache: 'no-store', redirect: 'error' });
@@ -21,6 +21,9 @@ export function createLibraryApi(getAccessToken?: () => Promise<string>) {
     },
     async getReadBooks(signal?: AbortSignal) {
       return (await listRead({ client, signal, throwOnError: true })).data;
+    },
+    async getBookDetails(editionId: string, signal?: AbortSignal) {
+      return (await details({ client, path: { editionId }, signal, throwOnError: true })).data;
     },
     async addLibraryBook(workId: string, editionId: string) {
       return (await add({ client, body: { workId, editionId }, throwOnError: true })).data;

@@ -3,6 +3,6 @@ public sealed record CatalogWork(string WorkId, string Title, string[] Authors, 
 
 public sealed record CatalogEdition(string EditionId, string Title,
     string[] Publishers, string? PublicationDate, int? PageCount, string[] Isbn10, string[] Isbn13,
-    string? CoverUrl, string EditionUrl, bool AlreadyAdded, bool AlreadyRead = false);
+    string? CoverUrl, string EditionUrl, bool AlreadyAdded, bool AlreadyRead = false, string? Description = null);
 
 public sealed record CatalogEditionPage(CatalogEdition[] Editions, int? NextOffset);

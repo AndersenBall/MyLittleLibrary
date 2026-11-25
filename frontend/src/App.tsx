@@ -9,6 +9,7 @@ import {
   type ReadGalleryBook,
 } from './api';
 import { RatingDialog, Stars } from './BookRating';
+import { BookDetailsDialog } from './BookDetailsDialog';
 import { paths, routeForPath, type Route } from './routes';
 
 function routeFromLocation(): Route {
@@ -48,6 +49,7 @@ function Shell({ route, navigate, signOut, children }: { route: Route; navigate:
 
 function Gallery({ navigate, api, readingHistory }: { navigate: (route: Route) => void; api: LibraryApi; readingHistory: boolean }) {
   const [books, setBooks] = useState<(GalleryBook | ReadGalleryBook)[]>([]);
+  const [selected, setSelected] = useState<GalleryBook | ReadGalleryBook | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const collection = readingHistory ? 'read books' : 'library';
 
@@ -63,12 +65,13 @@ function Gallery({ navigate, api, readingHistory }: { navigate: (route: Route) =
     {state === 'loading' && <div className="status-panel" role="status"><span className="spinner" />Loading your {collection}…</div>}
     {state === 'error' && <div className="status-panel error" role="alert"><strong>We couldn’t load your {collection}.</strong><span>Check your connection and try again.</span><button className="button button-secondary" type="button" onClick={() => void load()}>Retry</button></div>}
     {state === 'ready' && books.length === 0 && <div className="empty-state"><div className="empty-art"><span>✦</span><span>▱</span><span>✧</span></div><h2>{readingHistory ? 'No read books yet' : 'Your shelf is waiting'}</h2><p>{readingHistory ? 'Find a book you’ve finished in the catalog and mark it as read.' : 'Search the catalog to find your next favorite book, then add it here.'}</p><button className="button button-primary" type="button" onClick={() => navigate('add')}>Find a book</button></div>}
-    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map(book => <article className="book-card" key={book.editionId}>
+    {state === 'ready' && books.length > 0 && <div className="book-grid">{books.map(book => <button className="book-card" key={book.editionId} type="button" onClick={() => setSelected(book)} aria-label={`View details for ${book.title}`}>
       <Cover src={book.coverUrl} title={book.title} authors={book.authors} />
       <div className="book-info"><h2>{book.title}</h2>{'addedAt' in book
         ? <p>{book.authors.join(', ') || 'Unknown author'}</p>
         : book.rating == null ? <p>Not rated</p> : <Stars rating={book.rating} />}</div>
-    </article>)}</div>}
+    </button>)}</div>}
+    {selected && <BookDetailsDialog editionId={selected.editionId} title={selected.title} api={api} onClose={() => setSelected(null)} />}
   </section>;
 }
 

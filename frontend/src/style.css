@@ -30,7 +30,9 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .button-secondary { color: #315c4d; background: #e9f0eb; }
 .button-added { color: #2d6851; background: #e2eee5; }
 .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 34px 25px; }
-.book-card { min-width: 0; }
+.book-card { min-width: 0; padding: 0; border: 0; color: inherit; background: none; text-align: left; }
+.book-card:focus-visible { outline: 3px solid #315c4d; outline-offset: 5px; border-radius: 5px; }
+.book-card:hover .cover { box-shadow: 0 12px 24px rgba(45,57,47,.22); }
 .cover { position: relative; overflow: hidden; aspect-ratio: 2 / 3; border-radius: 5px; background: #e6e9e2; box-shadow: 0 9px 20px rgba(45,57,47,.11); }
 .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .cover-fallback { height: 100%; padding: 19px 15px; display: flex; flex-direction: column; justify-content: end; gap: 7px; color: #f7f6f1; background: linear-gradient(145deg, #5e8878, #274c41); }
@@ -61,6 +63,18 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .rating-field:disabled label { cursor: not-allowed; }
 .rating-selection { margin: 0; }
 .rating-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.book-details-dialog { width: min(620px, calc(100% - 32px)); max-height: calc(100% - 32px); }
+.book-details-dialog h3 { margin: 22px 0 10px; }
+.book-details-author { margin: 0; color: #52655b; }
+.book-details-pages { margin: 4px 0 0; color: #74807a; font-size: .86rem; }
+.summary-heading { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; }
+.book-details-dialog .summary-heading h3 { margin: 0; color: #52655b; font-size: .9rem; font-weight: 400; }
+.summary-heading h3 span { color: #74807a; font-size: .8rem; font-weight: 500; }
+.summary-toggle { padding: 5px 10px; font-size: 1rem; }
+.book-description { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; line-height: 1.5; }
+.book-details-list { display: grid; grid-template-columns: minmax(110px, 150px) minmax(0, 1fr); gap: 8px 14px; font-size: .9rem; }
+.book-details-list dt { color: #52655b; font-weight: 700; }
+.book-details-list dd { margin: 0; overflow-wrap: anywhere; }
 .status-panel { min-height: 145px; padding: 28px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; border: 1px solid #e5e6df; border-radius: 12px; color: #69766f; background: #fbfbf8; text-align: center; }
 .status-panel strong { color: #364a41; }
 .status-panel .button { flex-basis: 100%; margin: 4px auto 0; }

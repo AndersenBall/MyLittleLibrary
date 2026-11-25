@@ -11,6 +11,7 @@ public sealed class LibraryEdition
     public required string[] Isbn10 { get; init; }
     public required string[] Isbn13 { get; init; }
     public string? CoverUrl { get; init; }
+    public string? Description { get; init; }
 
     public static string DocumentId(string editionId) => "LibraryEditions/" + editionId;
     public static bool IsValidEditionId(string editionId) => Regex.IsMatch(editionId, "\\AOL[0-9]{1,15}M\\z", RegexOptions.CultureInvariant);
@@ -20,7 +21,8 @@ public sealed class LibraryEdition
     {
         EditionId = edition.EditionId, WorkId = workId, Title = edition.Title,
         Publishers = edition.Publishers, PublicationDate = edition.PublicationDate, PageCount = edition.PageCount,
-        Isbn10 = edition.Isbn10, Isbn13 = edition.Isbn13, CoverUrl = edition.CoverUrl
+        Isbn10 = edition.Isbn10, Isbn13 = edition.Isbn13, CoverUrl = edition.CoverUrl,
+        Description = edition.Description
     };
 }
 

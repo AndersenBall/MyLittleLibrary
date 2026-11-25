@@ -36,6 +36,12 @@ app.MapGet("/health", () => Results.Ok()).AllowAnonymous();
 
 var api = app.MapGroup("/api");
 
+api.MapGet("/books/{editionId}", LibraryHandler.GetBookDetails)
+    .WithName("getBookDetails")
+    .WithTags("Books")
+    .Produces<BookDetails>()
+    .Produces(StatusCodes.Status404NotFound);
+
 var catalog = api.MapGroup("/catalog").WithTags("Catalog");
 catalog.MapGet("/search", CatalogHandler.SearchCatalog)
     .WithName("searchCatalog")
