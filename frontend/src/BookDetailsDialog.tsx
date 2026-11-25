@@ -52,7 +52,6 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         <dt>Publication date</dt><dd>{value(details.edition.publicationDate)}</dd>
         <dt>ISBN-10</dt><dd>{value(details.edition.isbn10)}</dd>
         <dt>ISBN-13</dt><dd>{value(details.edition.isbn13)}</dd>
-        <dt>Edition ID</dt><dd>{details.edition.editionId}</dd>
       </dl>
       <dl className="book-details-list">
         <dt>In your library</dt><dd>{details.inLibrary ? 'Yes' : 'No'}</dd>
