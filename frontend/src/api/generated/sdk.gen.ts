@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetReadBooksData, GetReadBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetBookDetailsData, GetBookDetailsErrors, GetBookDetailsResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetReadBooksData, GetReadBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,8 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+export const getBookDetails = <ThrowOnError extends boolean = false>(options: Options<GetBookDetailsData, ThrowOnError>): RequestResult<GetBookDetailsResponses, GetBookDetailsErrors, ThrowOnError> => (options.client ?? client).get<GetBookDetailsResponses, GetBookDetailsErrors, ThrowOnError>({ url: '/api/books/{editionId}', ...options });
 
 export const searchCatalog = <ThrowOnError extends boolean = false>(options?: Options<SearchCatalogData, ThrowOnError>): RequestResult<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError> => (options?.client ?? client).get<SearchCatalogResponses, SearchCatalogErrors, ThrowOnError>({ url: '/api/catalog/search', ...options });
 

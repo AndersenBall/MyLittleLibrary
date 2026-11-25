@@ -4,6 +4,26 @@ using Raven.Client.Documents;
 
 public static class LibraryHandler
 {
+    public static async Task<Results<Ok<BookDetails>, NotFound>> GetBookDetails(
+        string editionId, ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
+    {
+        if (!LibraryEdition.IsValidEditionId(editionId)) return TypedResults.NotFound();
+
+        var ownerKey = LibraryAuthentication.OwnerKey(user);
+        using var session = store.OpenAsyncSession();
+        var edition = await session.LoadAsync<LibraryEdition>(LibraryEdition.DocumentId(editionId), cancellationToken);
+        if (edition is null) return TypedResults.NotFound();
+
+        var work = await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(edition.WorkId), cancellationToken);
+        if (work is null) return TypedResults.NotFound();
+
+        var libraryEntry = await session.LoadAsync<LibraryEntry>(LibraryEntry.DocumentId(ownerKey, editionId), cancellationToken);
+        var readEntry = await session.LoadAsync<ReadingHistoryEntry>(ReadingHistoryEntry.DocumentId(ownerKey, editionId), cancellationToken);
+        if (libraryEntry is null && readEntry is null) return TypedResults.NotFound();
+
+        return TypedResults.Ok(new BookDetails(edition, work, libraryEntry is not null, readEntry is not null, readEntry?.Rating));
+    }
+
     public static async Task<Ok<IReadOnlyList<GalleryBook>>> GetBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
     {
         using var session = store.OpenAsyncSession();

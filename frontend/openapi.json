@@ -5,6 +5,39 @@
     "version": "1.0"
   },
   "paths": {
+    "/api/books/{editionId}": {
+      "get": {
+        "tags": [
+          "Books"
+        ],
+        "operationId": "getBookDetails",
+        "parameters": [
+          {
+            "name": "editionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/catalog/search": {
       "get": {
         "tags": [
@@ -347,6 +380,35 @@
         },
         "additionalProperties": false
       },
+      "BookDetails": {
+        "required": [
+          "edition",
+          "inLibrary",
+          "isRead",
+          "work"
+        ],
+        "type": "object",
+        "properties": {
+          "edition": {
+            "$ref": "#/components/schemas/LibraryEdition"
+          },
+          "work": {
+            "$ref": "#/components/schemas/LibraryBook"
+          },
+          "inLibrary": {
+            "type": "boolean"
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "rating": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CatalogEdition": {
         "required": [
           "alreadyAdded",
@@ -535,6 +597,102 @@
         },
         "additionalProperties": { }
       },
+      "LibraryBook": {
+        "required": [
+          "authors",
+          "series",
+          "subjects",
+          "title",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "workId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "firstPublicationYear": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LibraryEdition": {
+        "required": [
+          "editionId",
+          "isbn10",
+          "isbn13",
+          "publishers",
+          "title",
+          "workId"
+        ],
+        "type": "object",
+        "properties": {
+          "editionId": {
+            "type": "string"
+          },
+          "workId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "publishers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicationDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "pageCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isbn10": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isbn13": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "MarkBookAsReadRequest": {
         "required": [
           "editionId",
@@ -625,6 +783,9 @@
     }
   },
   "tags": [
+    {
+      "name": "Books"
+    },
     {
       "name": "Catalog"
     },

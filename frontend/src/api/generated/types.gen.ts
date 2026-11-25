@@ -9,6 +9,14 @@ export type AddLibraryBookRequest = {
     editionId: string;
 };
 
+export type BookDetails = {
+    edition: LibraryEdition;
+    work: LibraryBook;
+    inLibrary: boolean;
+    isRead: boolean;
+    rating?: number | null;
+};
+
 export type CatalogEdition = {
     editionId: string;
     title: string;
@@ -56,6 +64,27 @@ export type HttpValidationProblemDetails = {
     [key: string]: unknown;
 };
 
+export type LibraryBook = {
+    workId: string;
+    title: string;
+    authors: Array<string>;
+    subjects: Array<string>;
+    series: Array<string>;
+    firstPublicationYear?: number | null;
+};
+
+export type LibraryEdition = {
+    editionId: string;
+    workId: string;
+    title: string;
+    publishers: Array<string>;
+    publicationDate?: string | null;
+    pageCount?: number | null;
+    isbn10: Array<string>;
+    isbn13: Array<string>;
+    coverUrl?: string | null;
+};
+
 export type MarkBookAsReadRequest = {
     workId: string;
     editionId: string;
@@ -78,6 +107,31 @@ export type ReadGalleryBook = {
     coverUrl?: string | null;
     rating?: number | null;
 };
+
+export type GetBookDetailsData = {
+    body?: never;
+    path: {
+        editionId: string;
+    };
+    query?: never;
+    url: '/api/books/{editionId}';
+};
+
+export type GetBookDetailsErrors = {
+    /**
+     * Not Found
+     */
+    404: unknown;
+};
+
+export type GetBookDetailsResponses = {
+    /**
+     * OK
+     */
+    200: BookDetails;
+};
+
+export type GetBookDetailsResponse = GetBookDetailsResponses[keyof GetBookDetailsResponses];
 
 export type SearchCatalogData = {
     body?: never;
