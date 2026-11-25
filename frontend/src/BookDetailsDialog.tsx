@@ -58,7 +58,6 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         <dt>Page count</dt><dd>{value(details.edition.pageCount)}</dd>
         <dt>ISBN-10</dt><dd>{value(details.edition.isbn10)}</dd>
         <dt>ISBN-13</dt><dd>{value(details.edition.isbn13)}</dd>
-        <dt>Cover URL</dt><dd>{details.edition.coverUrl ? <a href={details.edition.coverUrl} target="_blank" rel="noreferrer">{details.edition.coverUrl}</a> : 'Not available'}</dd>
       </dl>
     </>}
     <div className="rating-actions"><button className="button button-secondary" type="button" onClick={close}>Close</button></div>
