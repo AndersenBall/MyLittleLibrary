@@ -7,6 +7,7 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
   const [details, setDetails] = useState<BookDetails>();
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [summary, setSummary] = useState<'work' | 'edition'>('work');
 
   useEffect(() => {
     const element = dialog.current!;
@@ -35,22 +36,23 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
     {error && <div role="alert"><p className="form-message">{error}</p><button className="button button-secondary" type="button" onClick={() => setAttempt(current => current + 1)}>Retry</button></div>}
     {details && <>
       <p className="book-details-author">{details.work.authors.join(', ') || 'Unknown author'}</p>
-      <h3>Summary:</h3>
-      <p className="book-description">{details.work.description || 'No work description available.'}</p>
+      <p className="book-details-pages">{details.edition.pageCount == null ? 'Page count not available' : `${details.edition.pageCount} pages`}</p>
+      <div className="summary-heading">
+        <button className="button button-secondary summary-toggle" type="button" onClick={() => setSummary(current => current === 'work' ? 'edition' : 'work')} aria-label={`Show ${summary === 'work' ? 'edition' : 'work'} summary`} aria-controls="book-summary">↔</button>
+        <h3>Summary: <span>{summary === 'work' ? 'Work' : 'Edition'}</span></h3>
+      </div>
+      <p id="book-summary" className="book-description" aria-live="polite">{summary === 'work'
+        ? details.work.description || 'No work description available.'
+        : details.edition.description || 'No edition description available.'}</p>
       <dl className="book-details-list">
         <dt>Series</dt><dd>{value(details.work.series)}</dd>
         <dt>Subjects</dt><dd>{value(details.work.subjects)}</dd>
         <dt>First publication year</dt><dd>{value(details.work.firstPublicationYear)}</dd>
         <dt>Publishers</dt><dd>{value(details.edition.publishers)}</dd>
-      </dl>
-      <h3>Edition</h3>
-      <p className="book-description">{details.edition.description || 'No edition description available.'}</p>
-      <dl className="book-details-list">
-        <dt>Edition ID</dt><dd>{details.edition.editionId}</dd>
         <dt>Publication date</dt><dd>{value(details.edition.publicationDate)}</dd>
-        <dt>Page count</dt><dd>{value(details.edition.pageCount)}</dd>
         <dt>ISBN-10</dt><dd>{value(details.edition.isbn10)}</dd>
         <dt>ISBN-13</dt><dd>{value(details.edition.isbn13)}</dd>
+        <dt>Edition ID</dt><dd>{details.edition.editionId}</dd>
       </dl>
       <dl className="book-details-list">
         <dt>In your library</dt><dd>{details.inLibrary ? 'Yes' : 'No'}</dd>
