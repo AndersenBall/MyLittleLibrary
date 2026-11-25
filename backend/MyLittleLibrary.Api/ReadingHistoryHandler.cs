@@ -4,7 +4,7 @@ using Raven.Client.Documents;
 
 public static class ReadingHistoryHandler
 {
-    public static async Task<Ok<IReadOnlyList<ReadGalleryBook>>> GetBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken ct)
+    public static async Task<Ok<IReadOnlyList<ReadGalleryBook>>> GetReadBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken ct)
     {
         using var session = store.OpenAsyncSession();
         var ownerKey = LibraryAuthentication.OwnerKey(user);
