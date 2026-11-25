@@ -38,11 +38,11 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
       <p className="book-details-author">{details.work.authors.join(', ') || 'Unknown author'}</p>
       <p className="book-details-pages">{details.edition.pageCount == null ? 'Page count not available' : `${details.edition.pageCount} pages`}</p>
       <div className="summary-heading">
-        <button className="button button-secondary summary-toggle" type="button" onClick={() => setSummary(current => current === 'work' ? 'edition' : 'work')} aria-label={`Show ${summary === 'work' ? 'edition' : 'work'} summary`} aria-controls="book-summary">↔</button>
-        <h3>Summary: <span>{summary === 'work' ? 'Work' : 'Edition'}</span></h3>
+        <button className="button button-secondary summary-toggle" type="button" onClick={() => setSummary(current => current === 'work' ? 'edition' : 'work')} aria-label={`Show ${summary === 'work' ? 'edition' : 'book'} summary`} aria-controls="book-summary">↔</button>
+        <h3>Summary: <span>{summary === 'work' ? 'Book' : 'Edition'}</span></h3>
       </div>
       <p id="book-summary" className="book-description" aria-live="polite">{summary === 'work'
-        ? details.work.description || 'No work description available.'
+        ? details.work.description || 'No book description available.'
         : details.edition.description || 'No edition description available.'}</p>
       <dl className="book-details-list">
         <dt>Series</dt><dd>{value(details.work.series)}</dd>

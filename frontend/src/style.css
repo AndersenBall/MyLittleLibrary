@@ -68,7 +68,7 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .book-details-author { margin: 0; color: #52655b; }
 .book-details-pages { margin: 4px 0 0; color: #74807a; font-size: .86rem; }
 .summary-heading { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; }
-.book-details-dialog .summary-heading h3 { margin: 0; }
+.book-details-dialog .summary-heading h3 { margin: 0; color: #52655b; font-size: .9rem; font-weight: 400; }
 .summary-heading h3 span { color: #74807a; font-size: .8rem; font-weight: 500; }
 .summary-toggle { padding: 5px 10px; font-size: 1rem; }
 .book-description { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .9rem; line-height: 1.5; }
