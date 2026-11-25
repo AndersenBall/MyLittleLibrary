@@ -128,7 +128,7 @@ internal sealed class ApiScenario : IAsyncDisposable
 internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessageHandler
 {
     private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
-    private const string WorkMetadataFields = "key,title,author_name,subject,series_name,first_publish_year";
+    private const string WorkMetadataFields = "key,title,author_name,subject,series_name,first_publish_year,description";
     private readonly ConcurrentQueue<string> pendingQueries = new(expectedQueries);
     public ConcurrentQueue<Uri> Requests { get; } = new();
     public string[][] EditionPages { get; set; } = [["OL100001M", "OL100002M"]];
@@ -162,7 +162,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             Assert.Equal(WorkMetadataFields.Split(',').Order(StringComparer.Ordinal), fields.Split(',').Order(StringComparer.Ordinal));
             return search == "key:/works/OL999W" ? Json("""{ "docs": [] }""") : Json("""
             { "docs": [{ "key": "/works/OL10000W", "title": "The Hobbit", "author_name": ["J. R. R. Tolkien"],
-              "subject": ["Fantasy", "Adventure"], "series_name": ["Middle-earth"], "first_publish_year": 1937 }] }
+              "subject": ["Fantasy", "Adventure"], "series_name": ["Middle-earth"], "first_publish_year": 1937,
+              "description": { "value": "A description of the work." } }] }
             """);
         }
         Assert.Equal("12", Assert.Single(query["limit"]));
@@ -192,7 +193,8 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     private const string HobbitEdition = """
         { "key": "/books/OL100001M", "title": "The Hobbit", "works": [{ "key": "/works/OL10000W" }],
           "languages": [{ "key": "/languages/eng" }], "publish_date": "2012", "number_of_pages": 300,
-          "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234] }
+          "isbn_10": ["054792822X"], "isbn_13": ["9780547928227"], "publishers": ["Mariner Books"], "covers": [1234],
+          "description": { "value": "A description of this edition." } }
         """;
 
     private HttpResponseMessage Editions(Uri uri)
@@ -210,7 +212,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
                 var docs = string.Join(',', page.Select(id => id switch
                 {
                     "OL100001M" => HobbitEdition,
-                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015", "number_of_pages": 352 }""",
+                    "OL100002M" => """{ "key": "/books/OL100002M", "title": "The Hobbit (illustrated)", "languages": [{ "key": "/languages/fre" }, { "key": "/languages/eng" }], "publish_date": "May 2015", "number_of_pages": 352, "description": "An illustrated description." }""",
                     "OL100004M" or "OL100005M" => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (French)", "languages": [{ "key": "/languages/fre" }] }""",
                     _ => $$"""{ "key": "/books/{{id}}", "title": "The Hobbit (paperback)" }"""
                 }));

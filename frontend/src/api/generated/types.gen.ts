@@ -29,6 +29,7 @@ export type CatalogEdition = {
     editionUrl: string;
     alreadyAdded: boolean;
     alreadyRead: boolean;
+    description?: string | null;
 };
 
 export type CatalogEditionPage = {
@@ -71,6 +72,7 @@ export type LibraryBook = {
     subjects: Array<string>;
     series: Array<string>;
     firstPublicationYear?: number | null;
+    description?: string | null;
 };
 
 export type LibraryEdition = {
@@ -83,6 +85,7 @@ export type LibraryEdition = {
     isbn10: Array<string>;
     isbn13: Array<string>;
     coverUrl?: string | null;
+    description?: string | null;
 };
 
 export type MarkBookAsReadRequest = {

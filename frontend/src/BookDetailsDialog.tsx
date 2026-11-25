@@ -40,6 +40,7 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         <dt>Rating</dt><dd>{details.rating == null ? 'Not rated' : <><Stars rating={details.rating} /> {details.rating} out of 5</>}</dd>
       </dl>
       <h3>Work</h3>
+      <p className="book-description">{details.work.description || 'No work description available.'}</p>
       <dl className="book-details-list">
         <dt>Work ID</dt><dd>{details.work.workId}</dd>
         <dt>Title</dt><dd>{details.work.title}</dd>
@@ -49,6 +50,7 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         <dt>First publication year</dt><dd>{value(details.work.firstPublicationYear)}</dd>
       </dl>
       <h3>Edition</h3>
+      <p className="book-description">{details.edition.description || 'No edition description available.'}</p>
       <dl className="book-details-list">
         <dt>Edition ID</dt><dd>{details.edition.editionId}</dd>
         <dt>Work ID</dt><dd>{details.edition.workId}</dd>

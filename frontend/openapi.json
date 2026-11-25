@@ -467,6 +467,10 @@
           },
           "alreadyRead": {
             "type": "boolean"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -635,6 +639,10 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -687,6 +695,10 @@
             }
           },
           "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
             "type": "string",
             "nullable": true
           }

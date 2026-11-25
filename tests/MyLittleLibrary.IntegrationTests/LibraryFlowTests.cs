@@ -59,6 +59,7 @@ public sealed class LibraryFlowTests
             Assert.Equal(Author, Assert.Single(work.Authors));
             Assert.Equal(["Adventure", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
             Assert.Equal("Middle-earth", Assert.Single(work.Series));
+            Assert.Equal("A description of the work.", work.Description);
             var editions = await session.Advanced.LoadStartingWithAsync<LibraryEdition>("LibraryEditions/", token: Ct);
             Assert.Equal([EditionId, IllustratedId, PaperbackId], editions.Select(e => e.EditionId).Order(StringComparer.Ordinal));
             Assert.All(editions, e => Assert.Equal(WorkId, e.WorkId));
@@ -67,15 +68,18 @@ public sealed class LibraryFlowTests
             Assert.Equal(Isbn, Assert.Single(original.Isbn13));
             Assert.Equal("2012", original.PublicationDate);
             Assert.Equal(300, original.PageCount);
+            Assert.Equal("A description of this edition.", original.Description);
             var illustrated = Assert.Single(editions, e => e.EditionId == IllustratedId);
             Assert.Equal("May 2015", illustrated.PublicationDate);
             Assert.Equal(352, illustrated.PageCount);
+            Assert.Equal("An illustrated description.", illustrated.Description);
             var sparse = Assert.Single(editions, e => e.EditionId == PaperbackId);
             Assert.Empty(sparse.Isbn10);
             Assert.Empty(sparse.Isbn13);
             Assert.Null(sparse.CoverUrl);
             Assert.Null(sparse.PublicationDate);
             Assert.Null(sparse.PageCount);
+            Assert.Null(sparse.Description);
         }
 
         // The sibling was never returned to the browser.
@@ -383,6 +387,7 @@ public sealed class LibraryFlowTests
             (libraryOnly.Work.WorkId, libraryOnly.Work.Title, Assert.Single(libraryOnly.Work.Authors), libraryOnly.Work.FirstPublicationYear));
         Assert.Equal(["Adventure", "Fantasy"], libraryOnly.Work.Subjects.Order(StringComparer.Ordinal));
         Assert.Equal(["Middle-earth"], libraryOnly.Work.Series);
+        Assert.Equal("A description of the work.", libraryOnly.Work.Description);
         Assert.Equal(Title, libraryOnly.Edition.Title);
         Assert.Equal(["Mariner Books"], libraryOnly.Edition.Publishers);
         Assert.Equal("2012", libraryOnly.Edition.PublicationDate);
@@ -390,12 +395,14 @@ public sealed class LibraryFlowTests
         Assert.Equal(["054792822X"], libraryOnly.Edition.Isbn10);
         Assert.Equal([Isbn], libraryOnly.Edition.Isbn13);
         Assert.Equal(CatalogCoverUrl, libraryOnly.Edition.CoverUrl);
+        Assert.Equal("A description of this edition.", libraryOnly.Edition.Description);
 
         using var marked = await MarkReadAsync(api.Client, IllustratedId, 3.5m);
         Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
         var readOnly = await DetailsAsync(api.Client, IllustratedId);
         Assert.Equal((IllustratedId, false, true, (decimal?)3.5m),
             (readOnly.Edition.EditionId, readOnly.InLibrary, readOnly.IsRead, readOnly.Rating));
+        Assert.Equal("An illustrated description.", readOnly.Edition.Description);
 
         await AddAsync(api.Client, IllustratedId);
         var libraryAndRead = await DetailsAsync(api.Client, IllustratedId);
