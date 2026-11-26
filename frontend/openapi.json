@@ -629,6 +629,13 @@
               "type": "string"
             }
           },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
           "series": {
             "type": "array",
             "items": {

@@ -70,6 +70,7 @@ export type LibraryBook = {
     title: string;
     authors: Array<string>;
     subjects: Array<string>;
+    genres?: Array<string> | null;
     series: Array<string>;
     firstPublicationYear?: number | null;
     description?: string | null;

@@ -134,6 +134,10 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     public string[][] EditionPages { get; set; } = [["OL100001M", "OL100002M"]];
     public int? FailEditionOffset { get; set; }
     public bool FailSearches { get; set; }
+    public bool IncludeGenres { get; set; }
+    public bool FailGenreWorkProvider { get; set; }
+    public bool FailGenreLookup { get; set; }
+    public bool FailGenreProvider { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -144,10 +148,30 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         return Task.FromResult(uri.AbsolutePath switch
         {
             "/search.json" => Search(uri),
+            "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
+            "/tags/OL169T.json" when uri.Query.Length == 0 => FailGenreProvider
+                ? throw new HttpRequestException("Simulated Open Library outage.")
+                : Json("""{ "key": "/tags/OL169T", "name": "Fantasy", "tag_type": "genre" }"""),
+            "/tags/OL174T.json" when uri.Query.Length == 0 => FailGenreLookup
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : Json("""{ "key": "/tags/OL174T", "name": "Literary", "tag_type": "genre" }"""),
             "/works/OL10000W/editions.json" => Editions(uri),
             "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
         });
+    }
+
+    private HttpResponseMessage Work()
+    {
+        if (FailGenreWorkProvider) throw new HttpRequestException("Simulated Open Library outage.");
+        return Json(IncludeGenres ? """
+        { "key": "/works/OL10000W",
+          "genres": [
+            "/tags/OL169T", { "key": "/tags/OL174T" }, { "key": "/tags/OL169T" }
+          ] }
+        """ : """
+        { "key": "/works/OL10000W" }
+        """);
     }
 
     private HttpResponseMessage Search(Uri uri)
