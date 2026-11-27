@@ -138,6 +138,11 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     public bool FailGenreWorkProvider { get; set; }
     public bool FailGenreLookup { get; set; }
     public bool FailGenreProvider { get; set; }
+    public bool IncludeRedirectGenres { get; set; }
+    public bool TimeoutGenreWorkProvider { get; set; }
+    public HttpStatusCode? GenreWorkTimeoutStatus { get; set; }
+    public string? TimeoutGenreTagId { get; set; }
+    public HttpStatusCode? GenreTagTimeoutStatus { get; set; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -149,12 +154,23 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         {
             "/search.json" => Search(uri),
             "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
-            "/tags/OL169T.json" when uri.Query.Length == 0 => FailGenreProvider
-                ? throw new HttpRequestException("Simulated Open Library outage.")
-                : Json("""{ "key": "/tags/OL169T", "name": "Fantasy", "tag_type": "genre" }"""),
-            "/tags/OL174T.json" when uri.Query.Length == 0 => FailGenreLookup
-                ? new HttpResponseMessage(HttpStatusCode.NotFound)
-                : Json("""{ "key": "/tags/OL174T", "name": "Literary", "tag_type": "genre" }"""),
+            "/tags/OL169T.json" when uri.Query.Length == 0 => Tag(uri, "Fantasy"),
+            "/tags/OL174T.json" when uri.Query.Length == 0 => IncludeRedirectGenres
+                ? Redirect("OL174T", "/tags/OL175T")
+                : FailGenreLookup
+                    ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                    : Tag(uri, "Literary"),
+            "/tags/OL175T.json" when uri.Query.Length == 0 => Redirect("OL175T", "/tags/OL176T"),
+            "/tags/OL176T.json" when uri.Query.Length == 0 => Tag(uri, "Literary"),
+            "/tags/OL177T.json" when uri.Query.Length == 0 => new HttpResponseMessage(HttpStatusCode.NotFound),
+            "/tags/OL178T.json" when uri.Query.Length == 0 => Redirect("OL178T", "/tags/OL179T"),
+            "/tags/OL179T.json" when uri.Query.Length == 0 => Redirect("OL179T", "/tags/OL180T"),
+            "/tags/OL180T.json" when uri.Query.Length == 0 => Tag(uri, "Fantasy"),
+            "/tags/OL181T.json" when uri.Query.Length == 0 => Redirect("OL181T", "/tags/OL182T"),
+            "/tags/OL182T.json" when uri.Query.Length == 0 => Redirect("OL182T", "/tags/OL181T"),
+            "/tags/OL183T.json" when uri.Query.Length == 0 => Redirect("OL183T", "/tags/OL184T"),
+            "/tags/OL184T.json" when uri.Query.Length == 0 => Redirect("OL184T", "/tags/OL185T"),
+            "/tags/OL185T.json" when uri.Query.Length == 0 => Redirect("OL185T", "/tags/OL186T"),
             "/works/OL10000W/editions.json" => Editions(uri),
             "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
@@ -163,7 +179,17 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
 
     private HttpResponseMessage Work()
     {
+        if (GenreWorkTimeoutStatus is { } status) return new HttpResponseMessage(status);
+        if (TimeoutGenreWorkProvider) throw new TaskCanceledException("Simulated Open Library timeout.");
         if (FailGenreWorkProvider) throw new HttpRequestException("Simulated Open Library outage.");
+        if (IncludeRedirectGenres) return Json("""
+        { "key": "/works/OL10000W",
+          "genres": [
+            "/tags/OL169T", { "key": "/tags/OL174T" }, { "key": "/tags/OL174T" },
+            { "key": "/tags/OL177T" }, { "key": "/tags/OL178T" },
+            { "key": "/tags/OL181T" }, { "key": "/tags/OL183T" }
+          ] }
+        """);
         return Json(IncludeGenres ? """
         { "key": "/works/OL10000W",
           "genres": [
@@ -173,6 +199,18 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
         { "key": "/works/OL10000W" }
         """);
     }
+
+    private HttpResponseMessage Tag(Uri uri, string name)
+    {
+        var id = uri.AbsolutePath["/tags/".Length..^".json".Length];
+        if (GenreTagTimeoutStatus is { } status && id == TimeoutGenreTagId) return new HttpResponseMessage(status);
+        if (TimeoutGenreTagId == id) throw new TaskCanceledException("Simulated Open Library timeout.");
+        if (FailGenreProvider && id == "OL169T") throw new HttpRequestException("Simulated Open Library outage.");
+        return Json($$"""{ "key": "/tags/{{id}}", "name": "{{name}}", "tag_type": "genre" }""");
+    }
+
+    private static HttpResponseMessage Redirect(string id, string location) =>
+        Json($$"""{ "key": "/tags/{{id}}", "type": { "key": "/type/redirect" }, "location": "{{location}}" }""");
 
     private HttpResponseMessage Search(Uri uri)
     {

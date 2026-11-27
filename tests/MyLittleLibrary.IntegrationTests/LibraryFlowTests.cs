@@ -214,6 +214,39 @@ public sealed class LibraryFlowTests
     }
 
     [Fact]
+    public async Task StructuredGenresFollowTwoRedirectsDeduplicateNamesAndSkipMissingLoopAndLimit()
+    {
+        await using var api = new ApiScenario();
+        api.Catalog.IncludeGenres = true;
+        api.Catalog.IncludeRedirectGenres = true;
+
+        await AddAsync(api.Client, EditionId);
+
+        Assert.Collection(api.Catalog.Requests,
+            uri => Assert.Equal("/search.json", uri.AbsolutePath),
+            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
+            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL169T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL174T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL175T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL176T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL177T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL178T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL179T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL180T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL181T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL182T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL183T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL184T.json", uri.PathAndQuery),
+            uri => Assert.Equal("/tags/OL185T.json", uri.PathAndQuery));
+        Assert.DoesNotContain(api.Catalog.Requests, uri => uri.AbsolutePath == "/tags/OL186T.json");
+
+        using var session = api.Store.OpenAsyncSession();
+        var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
+        Assert.Equal(["Fantasy", "Literary"], work.Genres!.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task FailedFirstGenreProviderLookupLeavesResolvedGenresAndCompletesImport()
     {
         await using var api = new ApiScenario();
