@@ -13,12 +13,18 @@ export function Stars({ rating }: { rating: number }) {
   </span>;
 }
 
-export function RatingDialog({ title, onClose, onSave }: { title: string; onClose: () => void; onSave: (rating: number, reviewComment?: string) => Promise<void> }) {
+export function RatingDialog({ title, initialReview, onClose, onSave }: {
+  title: string;
+  initialReview?: { rating?: number | null; reviewComment?: string | null };
+  onClose: () => void;
+  onSave: (rating: number, reviewComment?: string) => Promise<void>;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [rating, setRating] = useState<number>();
-  const [reviewComment, setReviewComment] = useState('');
+  const [rating, setRating] = useState(initialReview?.rating ?? undefined);
+  const [reviewComment, setReviewComment] = useState(initialReview?.reviewComment ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const editing = initialReview !== undefined;
 
   useEffect(() => {
     const element = dialog.current!;
@@ -40,9 +46,12 @@ export function RatingDialog({ title, onClose, onSave }: { title: string; onClos
       if (rating === undefined || saving) return;
       setSaving(true); setError('');
       try { await onSave(rating, reviewComment.trim() || undefined); close(); }
-      catch (error) { setError(apiMessage(error, 'Couldn’t mark this book as read. Please try again.')); setSaving(false); }
+      catch (error) {
+        setError(apiMessage(error, editing ? 'Couldn’t save your review. Please try again.' : 'Couldn’t mark this book as read. Please try again.'));
+        setSaving(false);
+      }
     }}>
-      <h2 id="rating-title">Rate this book</h2>
+      <h2 id="rating-title">{editing ? 'Edit review' : 'Rate this book'}</h2>
       <p className="rating-book-title">{title}</p>
       <fieldset className="rating-field" disabled={saving}>
         <legend>Choose 1–5 stars. Half stars are allowed.</legend>
@@ -63,7 +72,7 @@ export function RatingDialog({ title, onClose, onSave }: { title: string; onClos
       {error && <p className="form-message" role="alert">{error}</p>}
       <div className="rating-actions">
         <button className="button button-secondary" type="button" disabled={saving} onClick={close}>Cancel</button>
-        <button className="button button-primary" type="submit" disabled={rating === undefined || saving}>{saving ? 'Saving…' : 'Mark as read'}</button>
+        <button className="button button-primary" type="submit" disabled={rating === undefined || saving}>{saving ? 'Saving…' : editing ? 'Save review' : 'Mark as read'}</button>
       </div>
     </form>
   </dialog>;

@@ -28,6 +28,8 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .button-primary { color: white; background: #2f5b4b; box-shadow: 0 5px 13px rgba(45,88,72,.15); }
 .button-primary:hover:not(:disabled) { background: #234b3d; }
 .button-secondary { color: #315c4d; background: #e9f0eb; }
+.button-danger { color: white; background: #953b2d; }
+.button-danger:hover:not(:disabled) { background: #762e24; }
 .button-added { color: #2d6851; background: #e2eee5; }
 .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 34px 25px; }
 .book-card { min-width: 0; padding: 0; border: 0; color: inherit; background: none; text-align: left; }
@@ -68,6 +70,9 @@ h1 { margin-bottom: 10px; color: #23352f; font-family: 'Playfair Display', Georg
 .rating-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .book-details-dialog { width: min(620px, calc(100% - 32px)); max-height: calc(100% - 32px); }
 .book-details-dialog h3 { margin: 22px 0 10px; }
+.book-details-actions { flex-wrap: wrap; }
+.remove-confirmation { margin-top: 16px; padding: 12px; border: 1px solid #e3c9bf; border-radius: 8px; }
+.book-details-dialog .remove-confirmation h3 { margin: 0; }
 .book-details-author { margin: 0; color: #52655b; }
 .book-details-pages { margin: 4px 0 0; color: #74807a; font-size: .86rem; }
 .summary-heading { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; }

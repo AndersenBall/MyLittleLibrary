@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetBookDetailsData, GetBookDetailsErrors, GetBookDetailsResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetReadBooksData, GetReadBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses } from './types.gen';
+import type { AddLibraryBookData, AddLibraryBookErrors, AddLibraryBookResponses, GetBookDetailsData, GetBookDetailsErrors, GetBookDetailsResponses, GetCatalogEditionsData, GetCatalogEditionsErrors, GetCatalogEditionsResponses, GetHealthData, GetHealthResponses, GetLibraryBooksData, GetLibraryBooksResponses, GetReadBooksData, GetReadBooksResponses, MarkBookAsReadData, MarkBookAsReadErrors, MarkBookAsReadResponses, RemoveLibraryBookData, RemoveLibraryBookErrors, RemoveLibraryBookResponses, RemoveReadBookData, RemoveReadBookErrors, RemoveReadBookResponses, SearchCatalogData, SearchCatalogErrors, SearchCatalogResponses, UpdateBookReviewData, UpdateBookReviewErrors, UpdateBookReviewResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -35,12 +35,25 @@ export const addLibraryBook = <ThrowOnError extends boolean = false>(options: Op
     }
 });
 
+export const removeLibraryBook = <ThrowOnError extends boolean = false>(options: Options<RemoveLibraryBookData, ThrowOnError>): RequestResult<RemoveLibraryBookResponses, RemoveLibraryBookErrors, ThrowOnError> => (options.client ?? client).delete<RemoveLibraryBookResponses, RemoveLibraryBookErrors, ThrowOnError>({ url: '/api/library/books/{editionId}', ...options });
+
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });
 
 export const getReadBooks = <ThrowOnError extends boolean = false>(options?: Options<GetReadBooksData, ThrowOnError>): RequestResult<GetReadBooksResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetReadBooksResponses, unknown, ThrowOnError>({ url: '/api/reading-history/books', ...options });
 
 export const markBookAsRead = <ThrowOnError extends boolean = false>(options: Options<MarkBookAsReadData, ThrowOnError>): RequestResult<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError> => (options.client ?? client).post<MarkBookAsReadResponses, MarkBookAsReadErrors, ThrowOnError>({
     url: '/api/reading-history/books',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const removeReadBook = <ThrowOnError extends boolean = false>(options: Options<RemoveReadBookData, ThrowOnError>): RequestResult<RemoveReadBookResponses, RemoveReadBookErrors, ThrowOnError> => (options.client ?? client).delete<RemoveReadBookResponses, RemoveReadBookErrors, ThrowOnError>({ url: '/api/reading-history/books/{editionId}', ...options });
+
+export const updateBookReview = <ThrowOnError extends boolean = false>(options: Options<UpdateBookReviewData, ThrowOnError>): RequestResult<UpdateBookReviewResponses, UpdateBookReviewErrors, ThrowOnError> => (options.client ?? client).put<UpdateBookReviewResponses, UpdateBookReviewErrors, ThrowOnError>({
+    url: '/api/reading-history/books/{editionId}/review',
     ...options,
     headers: {
         'Content-Type': 'application/json',

@@ -452,6 +452,173 @@ public sealed class LibraryFlowTests
     }
 
     [Fact]
+    public async Task RemovingLibraryEntriesIsIdempotentOwnerScopedAndReAddUsesStoredMetadata()
+    {
+        await using var api = new ApiScenario(Title);
+        using var other = api.CreateClient("another-reader");
+        await AddAsync(api.Client, EditionId);
+        using var marked = await MarkReadAsync(api.Client, EditionId, 4, "Owner review");
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        await AddAsync(other, EditionId);
+        using var otherMarked = await MarkReadAsync(other, EditionId, 2, "Other review");
+        Assert.Equal(HttpStatusCode.NoContent, otherMarked.StatusCode);
+
+        var catalogCalls = ImportAndSearchRequests(api).Count();
+        var documents = await DocumentCountAsync(api);
+        using var removed = await DeleteLibraryAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        Assert.Empty(await ShelfAsync(api.Client));
+        var ownerRead = Assert.Single(await ReadBooksAsync(api.Client));
+        Assert.Equal((EditionId, (decimal?)4), (ownerRead.EditionId, ownerRead.Rating));
+        var ownerDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((EditionId, false, true, (decimal?)4),
+            (ownerDetails.Edition.EditionId, ownerDetails.InLibrary, ownerDetails.IsRead, ownerDetails.Rating));
+        Assert.Equal("Owner review", ownerDetails.ReviewComment);
+
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(other)).EditionId);
+        var otherDetails = await DetailsAsync(other, EditionId);
+        Assert.Equal((EditionId, true, true, (decimal?)2),
+            (otherDetails.Edition.EditionId, otherDetails.InLibrary, otherDetails.IsRead, otherDetails.Rating));
+        Assert.Equal("Other review", otherDetails.ReviewComment);
+        Assert.Equal(documents - 1, await DocumentCountAsync(api));
+
+        using var repeated = await DeleteLibraryAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        using var unknown = await DeleteLibraryAsync(api.Client, "OL999999M");
+        Assert.Equal(HttpStatusCode.NoContent, unknown.StatusCode);
+        using var malformed = await DeleteLibraryAsync(api.Client, "not-an-edition");
+        Assert.Equal(HttpStatusCode.NotFound, malformed.StatusCode);
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+
+        api.Catalog.FailSearches = true;
+        var readded = await AddAsync(api.Client, EditionId);
+        Assert.Equal(EditionId, readded.EditionId);
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+        Assert.Equal(documents, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task RemovingReadEntriesIsIdempotentIndependentAndReMarkUsesStoredMetadata()
+    {
+        await using var api = new ApiScenario(Title);
+        using var other = api.CreateClient("another-reader");
+        await AddAsync(api.Client, EditionId);
+        using var marked = await MarkReadAsync(api.Client, EditionId, 4, "Owner review");
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        await AddAsync(other, EditionId);
+        using var otherMarked = await MarkReadAsync(other, EditionId, 2, "Other review");
+        Assert.Equal(HttpStatusCode.NoContent, otherMarked.StatusCode);
+
+        var catalogCalls = ImportAndSearchRequests(api).Count();
+        var documents = await DocumentCountAsync(api);
+        using var removed = await DeleteReadAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        Assert.Empty(await ReadBooksAsync(api.Client));
+        var ownerDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((EditionId, true, false, (decimal?)null),
+            (ownerDetails.Edition.EditionId, ownerDetails.InLibrary, ownerDetails.IsRead, ownerDetails.Rating));
+        Assert.Null(ownerDetails.ReviewComment);
+
+        var otherRead = Assert.Single(await ReadBooksAsync(other));
+        Assert.Equal((EditionId, (decimal?)2), (otherRead.EditionId, otherRead.Rating));
+        var otherDetails = await DetailsAsync(other, EditionId);
+        Assert.Equal((EditionId, true, true, (decimal?)2),
+            (otherDetails.Edition.EditionId, otherDetails.InLibrary, otherDetails.IsRead, otherDetails.Rating));
+        Assert.Equal("Other review", otherDetails.ReviewComment);
+        Assert.Equal(EditionId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
+        Assert.Equal(documents - 1, await DocumentCountAsync(api));
+
+        using var repeated = await DeleteReadAsync(api.Client, EditionId);
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        using var unknown = await DeleteReadAsync(api.Client, "OL999999M");
+        Assert.Equal(HttpStatusCode.NoContent, unknown.StatusCode);
+        using var malformed = await DeleteReadAsync(api.Client, "not-an-edition");
+        Assert.Equal(HttpStatusCode.NotFound, malformed.StatusCode);
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+
+        api.Catalog.FailSearches = true;
+        using var remarked = await MarkReadAsync(api.Client, EditionId, 3.5m, "  Re-added review  ");
+        Assert.Equal(HttpStatusCode.NoContent, remarked.StatusCode);
+        var reMarkedDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((EditionId, true, true, (decimal?)3.5m),
+            (reMarkedDetails.Edition.EditionId, reMarkedDetails.InLibrary, reMarkedDetails.IsRead, reMarkedDetails.Rating));
+        Assert.Equal("Re-added review", reMarkedDetails.ReviewComment);
+        var reMarked = Assert.Single(await ReadBooksAsync(api.Client));
+        Assert.Equal((EditionId, (decimal?)3.5m),
+            (reMarked.EditionId, reMarked.Rating));
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+        Assert.Equal(documents, await DocumentCountAsync(api));
+    }
+
+    [Fact]
+    public async Task UpdatingReviewsValidatesAndOnlyChangesAnExistingOwnerReadEntry()
+    {
+        await using var api = new ApiScenario(Title);
+        using var marked = await MarkReadAsync(api.Client, EditionId, 2, "Original review");
+        Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
+        var catalogCalls = ImportAndSearchRequests(api).Count();
+
+        // POST mark-read remains create-only; review changes use the PUT endpoint.
+        using var repeatedMark = await MarkReadAsync(api.Client, EditionId, 5, "Attempted overwrite");
+        Assert.Equal(HttpStatusCode.NoContent, repeatedMark.StatusCode);
+        var original = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((decimal?)2, original.Rating);
+        Assert.Equal("Original review", original.ReviewComment);
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+
+        using var updated = await UpdateReviewAsync(api.Client, EditionId, 3.5m, "  Updated review  ");
+        Assert.Equal(HttpStatusCode.NoContent, updated.StatusCode);
+        var updatedDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Equal((decimal?)3.5m, updatedDetails.Rating);
+        Assert.Equal("Updated review", updatedDetails.ReviewComment);
+        var updatedRead = Assert.Single(await ReadBooksAsync(api.Client));
+        Assert.Equal((EditionId, (decimal?)3.5m),
+            (updatedRead.EditionId, updatedRead.Rating));
+
+        var twoThousand = new string('x', 2000);
+        using var trimmedLimit = await UpdateReviewAsync(api.Client, EditionId, 4, $"  {twoThousand}  ");
+        Assert.Equal(HttpStatusCode.NoContent, trimmedLimit.StatusCode);
+        Assert.Equal(twoThousand, (await DetailsAsync(api.Client, EditionId)).ReviewComment);
+        using var tooLong = await UpdateReviewAsync(api.Client, EditionId, 4, $"  {new string('x', 2001)}  ");
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal(twoThousand, (await DetailsAsync(api.Client, EditionId)).ReviewComment);
+
+        foreach (var rating in new[] { 0.5m, 3.25m, 5.5m })
+        {
+            using var invalidRating = await UpdateReviewAsync(api.Client, EditionId, rating);
+            Assert.Equal(HttpStatusCode.BadRequest, invalidRating.StatusCode);
+        }
+        using var omittedRating = await UpdateReviewWithoutRatingAsync(api.Client, EditionId, "ignored");
+        Assert.Equal(HttpStatusCode.BadRequest, omittedRating.StatusCode);
+
+        using var blank = await UpdateReviewAsync(api.Client, EditionId, 4, "  ");
+        Assert.Equal(HttpStatusCode.NoContent, blank.StatusCode);
+        Assert.Null((await DetailsAsync(api.Client, EditionId)).ReviewComment);
+        using var restoreBeforeNull = await UpdateReviewAsync(api.Client, EditionId, 4, "Clear me with null");
+        Assert.Equal(HttpStatusCode.NoContent, restoreBeforeNull.StatusCode);
+        using var nullComment = await UpdateReviewAsync(api.Client, EditionId, 4, null);
+        Assert.Equal(HttpStatusCode.NoContent, nullComment.StatusCode);
+        Assert.Null((await DetailsAsync(api.Client, EditionId)).ReviewComment);
+        using var restoreBeforeOmission = await UpdateReviewAsync(api.Client, EditionId, 4, "Clear me by omission");
+        Assert.Equal(HttpStatusCode.NoContent, restoreBeforeOmission.StatusCode);
+        using var omittedComment = await UpdateReviewWithoutCommentAsync(api.Client, EditionId, 4);
+        Assert.Equal(HttpStatusCode.NoContent, omittedComment.StatusCode);
+        Assert.Null((await DetailsAsync(api.Client, EditionId)).ReviewComment);
+
+        using var other = api.CreateClient("another-reader");
+        using var noOwnEntry = await UpdateReviewAsync(other, EditionId, 4, "Not mine");
+        Assert.Equal(HttpStatusCode.NotFound, noOwnEntry.StatusCode);
+        Assert.Empty(await ReadBooksAsync(other));
+        Assert.Null((await DetailsAsync(api.Client, EditionId)).ReviewComment);
+        using var missingEdition = await UpdateReviewAsync(api.Client, "OL999999M", 4);
+        Assert.Equal(HttpStatusCode.NotFound, missingEdition.StatusCode);
+        using var malformedEdition = await UpdateReviewAsync(api.Client, "not-an-edition", 4);
+        Assert.Equal(HttpStatusCode.NotFound, malformedEdition.StatusCode);
+        Assert.Equal(catalogCalls, ImportAndSearchRequests(api).Count());
+    }
+
+    [Fact]
     public async Task ConcurrentShelfAndReadWritesShareOneImportButKeepSeparateEntries()
     {
         await using var api = new ApiScenario();
@@ -479,10 +646,13 @@ public sealed class LibraryFlowTests
         using var readGallery = await anonymous.GetAsync(ReadingHistoryPath, Ct);
         using var add = await anonymous.PostAsync(BooksPath, null, Ct);
         using var mark = await anonymous.PostAsync(ReadingHistoryPath, null, Ct);
+        using var removeFromLibrary = await anonymous.DeleteAsync($"{BooksPath}/{EditionId}", Ct);
+        using var removeFromReadingHistory = await anonymous.DeleteAsync($"{ReadingHistoryPath}/{EditionId}", Ct);
+        using var updateReview = await anonymous.PutAsJsonAsync($"{ReadingHistoryPath}/{EditionId}/review", new { rating = 5m }, Ct);
         using var health = await anonymous.GetAsync("/health", Ct);
         using var swaggerUi = await anonymous.GetAsync("/swagger/index.html", Ct);
         using var swaggerDocument = await anonymous.GetAsync("/swagger/v1/swagger.json", Ct);
-        Assert.All(new[] { search, editions, gallery, readGallery, add, mark, swaggerUi, swaggerDocument },
+        Assert.All(new[] { search, editions, gallery, readGallery, add, mark, removeFromLibrary, removeFromReadingHistory, updateReview, swaggerUi, swaggerDocument },
             r => Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode));
         Assert.True(gallery.Headers.CacheControl is { Private: true, NoStore: true });
         Assert.True(readGallery.Headers.CacheControl is { Private: true, NoStore: true });
@@ -532,8 +702,23 @@ public sealed class LibraryFlowTests
     private static Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, string workId = WorkId) =>
         client.PostAsJsonAsync(BooksPath, new { workId, editionId }, Ct);
 
+    private static Task<HttpResponseMessage> DeleteLibraryAsync(HttpClient client, string editionId) =>
+        client.DeleteAsync($"{BooksPath}/{editionId}", Ct);
+
+    private static Task<HttpResponseMessage> DeleteReadAsync(HttpClient client, string editionId) =>
+        client.DeleteAsync($"{ReadingHistoryPath}/{editionId}", Ct);
+
     private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId, decimal rating = 5, string? reviewComment = null) =>
         client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId, rating, reviewComment }, Ct);
+
+    private static Task<HttpResponseMessage> UpdateReviewAsync(HttpClient client, string editionId, decimal rating, string? reviewComment = null) =>
+        client.PutAsJsonAsync($"{ReadingHistoryPath}/{editionId}/review", new { rating, reviewComment }, Ct);
+
+    private static Task<HttpResponseMessage> UpdateReviewWithoutCommentAsync(HttpClient client, string editionId, decimal rating) =>
+        client.PutAsJsonAsync($"{ReadingHistoryPath}/{editionId}/review", new { rating }, Ct);
+
+    private static Task<HttpResponseMessage> UpdateReviewWithoutRatingAsync(HttpClient client, string editionId, string reviewComment) =>
+        client.PutAsJsonAsync($"{ReadingHistoryPath}/{editionId}/review", new { reviewComment }, Ct);
 
     private static async Task<ReadGalleryBook[]> ReadBooksAsync(HttpClient client)
     {
