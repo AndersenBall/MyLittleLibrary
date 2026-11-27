@@ -114,6 +114,11 @@ export type ReadGalleryBook = {
     rating?: number | null;
 };
 
+export type UpdateBookReviewRequest = {
+    rating: number;
+    reviewComment?: string | null;
+};
+
 export type GetBookDetailsData = {
     body?: never;
     path: {
@@ -268,6 +273,31 @@ export type AddLibraryBookResponses = {
 
 export type AddLibraryBookResponse = AddLibraryBookResponses[keyof AddLibraryBookResponses];
 
+export type RemoveLibraryBookData = {
+    body?: never;
+    path: {
+        editionId: string;
+    };
+    query?: never;
+    url: '/api/library/books/{editionId}';
+};
+
+export type RemoveLibraryBookErrors = {
+    /**
+     * Not Found
+     */
+    404: unknown;
+};
+
+export type RemoveLibraryBookResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RemoveLibraryBookResponse = RemoveLibraryBookResponses[keyof RemoveLibraryBookResponses];
+
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -338,3 +368,67 @@ export type MarkBookAsReadResponses = {
 };
 
 export type MarkBookAsReadResponse = MarkBookAsReadResponses[keyof MarkBookAsReadResponses];
+
+export type RemoveReadBookData = {
+    body?: never;
+    path: {
+        editionId: string;
+    };
+    query?: never;
+    url: '/api/reading-history/books/{editionId}';
+};
+
+export type RemoveReadBookErrors = {
+    /**
+     * Not Found
+     */
+    404: unknown;
+};
+
+export type RemoveReadBookResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RemoveReadBookResponse = RemoveReadBookResponses[keyof RemoveReadBookResponses];
+
+export type UpdateBookReviewData = {
+    body: UpdateBookReviewRequest;
+    path: {
+        editionId: string;
+    };
+    query?: never;
+    url: '/api/reading-history/books/{editionId}/review';
+};
+
+export type UpdateBookReviewErrors = {
+    /**
+     * Bad Request
+     */
+    400: ProblemDetails;
+    /**
+     * Not Found
+     */
+    404: unknown;
+    /**
+     * Conflict
+     */
+    409: ProblemDetails;
+    /**
+     * Unsupported Media Type
+     */
+    415: unknown;
+};
+
+export type UpdateBookReviewError = UpdateBookReviewErrors[keyof UpdateBookReviewErrors];
+
+export type UpdateBookReviewResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type UpdateBookReviewResponse = UpdateBookReviewResponses[keyof UpdateBookReviewResponses];

@@ -63,6 +63,8 @@ library.MapPost("/books", LibraryHandler.AddBook)
     .ProducesProblem(StatusCodes.Status409Conflict)
     .Produces(StatusCodes.Status415UnsupportedMediaType)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+library.MapDelete("/books/{editionId}", LibraryHandler.RemoveBook)
+    .WithName("removeLibraryBook");
 
 var readingHistory = api.MapGroup("/reading-history").WithTags("Reading History");
 readingHistory.MapGet("/books", ReadingHistoryHandler.GetReadBooks)
@@ -74,6 +76,13 @@ readingHistory.MapPost("/books", ReadingHistoryHandler.MarkAsRead)
     .ProducesProblem(StatusCodes.Status409Conflict)
     .Produces(StatusCodes.Status415UnsupportedMediaType)
     .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+readingHistory.MapDelete("/books/{editionId}", ReadingHistoryHandler.RemoveReadBook)
+    .WithName("removeReadBook");
+readingHistory.MapPut("/books/{editionId}/review", ReadingHistoryHandler.UpdateReview)
+    .WithName("updateBookReview")
+    .ProducesProblem(StatusCodes.Status400BadRequest)
+    .ProducesProblem(StatusCodes.Status409Conflict)
+    .Produces(StatusCodes.Status415UnsupportedMediaType);
 
 app.Run();
 

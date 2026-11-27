@@ -9,7 +9,7 @@ import {
   type ReadGalleryBook,
 } from './api';
 import { RatingDialog, Stars } from './BookRating';
-import { BookDetailsDialog } from './BookDetailsDialog';
+import { BookDetailsDialog, type BookCollection } from './BookDetailsDialog';
 import { paths, routeForPath, type Route } from './routes';
 
 function routeFromLocation(): Route {
@@ -51,7 +51,8 @@ function Gallery({ navigate, api, readingHistory }: { navigate: (route: Route) =
   const [books, setBooks] = useState<(GalleryBook | ReadGalleryBook)[]>([]);
   const [selected, setSelected] = useState<GalleryBook | ReadGalleryBook | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const collection = readingHistory ? 'read books' : 'library';
+  const heading = useRef<HTMLHeadingElement>(null);
+  const collection: BookCollection = readingHistory ? 'read books' : 'library';
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState('loading');
@@ -61,7 +62,7 @@ function Gallery({ navigate, api, readingHistory }: { navigate: (route: Route) =
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
 
   return <section className="page library-page">
-    <div className="page-heading"><div><p className="eyebrow">{readingHistory ? 'Your reading history' : 'Your collection'}</p><h1>{readingHistory ? 'Read Books' : 'My Library'}</h1><p className="lede">{readingHistory ? 'The books you’ve finished and how you rated them.' : 'A home for the books you want to remember.'}</p></div><button className="button button-primary" type="button" onClick={() => navigate('add')}>＋ Add Books</button></div>
+    <div className="page-heading"><div><p className="eyebrow">{readingHistory ? 'Your reading history' : 'Your collection'}</p><h1 ref={heading} tabIndex={-1}>{readingHistory ? 'Read Books' : 'My Library'}</h1><p className="lede">{readingHistory ? 'The books you’ve finished and how you rated them.' : 'A home for the books you want to remember.'}</p></div><button className="button button-primary" type="button" onClick={() => navigate('add')}>＋ Add Books</button></div>
     {state === 'loading' && <div className="status-panel" role="status"><span className="spinner" />Loading your {collection}…</div>}
     {state === 'error' && <div className="status-panel error" role="alert"><strong>We couldn’t load your {collection}.</strong><span>Check your connection and try again.</span><button className="button button-secondary" type="button" onClick={() => void load()}>Retry</button></div>}
     {state === 'ready' && books.length === 0 && <div className="empty-state"><div className="empty-art"><span>✦</span><span>▱</span><span>✧</span></div><h2>{readingHistory ? 'No read books yet' : 'Your shelf is waiting'}</h2><p>{readingHistory ? 'Find a book you’ve finished in the catalog and mark it as read.' : 'Search the catalog to find your next favorite book, then add it here.'}</p><button className="button button-primary" type="button" onClick={() => navigate('add')}>Find a book</button></div>}
@@ -71,7 +72,15 @@ function Gallery({ navigate, api, readingHistory }: { navigate: (route: Route) =
         ? <p>{book.authors.join(', ') || 'Unknown author'}</p>
         : book.rating == null ? <p>Not rated</p> : <Stars rating={book.rating} />}</div>
     </button>)}</div>}
-    {selected && <BookDetailsDialog editionId={selected.editionId} title={selected.title} api={api} onClose={() => setSelected(null)} />}
+    {selected && <BookDetailsDialog editionId={selected.editionId} title={selected.title} api={api} collection={collection}
+      onClose={() => setSelected(null)}
+      onRemove={() => {
+        setBooks(current => current.filter(book => book.editionId !== selected.editionId));
+        heading.current?.focus();
+      }}
+      onReviewChange={rating => {
+        if (readingHistory) setBooks(current => current.map(book => book.editionId === selected.editionId ? { ...book, rating } : book));
+      }} />}
   </section>;
 }
 

@@ -1,5 +1,5 @@
 import { createClient } from './api/generated/client';
-import { addLibraryBook as add, getBookDetails as details, getCatalogEditions as editions, getLibraryBooks as list, getReadBooks as listRead, markBookAsRead as markRead, searchCatalog as search } from './api/generated/sdk.gen';
+import { addLibraryBook as add, getBookDetails as details, getCatalogEditions as editions, getLibraryBooks as list, getReadBooks as listRead, markBookAsRead as markRead, removeLibraryBook, removeReadBook, searchCatalog as search, updateBookReview } from './api/generated/sdk.gen';
 export type { BookDetails, CatalogEdition, CatalogWork, GalleryBook, ReadGalleryBook } from './api/generated/types.gen';
 
 export function createLibraryApi(getAccessToken?: () => Promise<string>) {
@@ -30,6 +30,15 @@ export function createLibraryApi(getAccessToken?: () => Promise<string>) {
     },
     async markBookAsRead(workId: string, editionId: string, rating: number, reviewComment?: string) {
       await markRead({ client, body: { workId, editionId, rating, reviewComment }, throwOnError: true });
+    },
+    async removeLibraryBook(editionId: string) {
+      await removeLibraryBook({ client, path: { editionId }, throwOnError: true });
+    },
+    async removeReadBook(editionId: string) {
+      await removeReadBook({ client, path: { editionId }, throwOnError: true });
+    },
+    async updateBookReview(editionId: string, rating: number, reviewComment?: string) {
+      await updateBookReview({ client, path: { editionId }, body: { rating, reviewComment: reviewComment ?? null }, throwOnError: true });
     },
   };
 }

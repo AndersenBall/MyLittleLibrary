@@ -45,6 +45,17 @@ public static class LibraryHandler
         return TypedResults.Ok<IReadOnlyList<GalleryBook>>(gallery);
     }
 
+    public static async Task<Results<NoContent, NotFound>> RemoveBook(
+        string editionId, ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
+    {
+        if (!LibraryEdition.IsValidEditionId(editionId)) return TypedResults.NotFound();
+
+        using var session = store.OpenAsyncSession();
+        session.Delete(LibraryEntry.DocumentId(LibraryAuthentication.OwnerKey(user), editionId));
+        await session.SaveChangesAsync(cancellationToken);
+        return TypedResults.NoContent();
+    }
+
     public static async Task<Results<Ok<GalleryBook>, JsonHttpResult<GalleryBook>, ProblemHttpResult>> AddBook(
         AddLibraryBookRequest input,
         ClaimsPrincipal user,
