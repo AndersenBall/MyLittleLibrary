@@ -57,6 +57,7 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         <dt>In your library</dt><dd>{details.inLibrary ? 'Yes' : 'No'}</dd>
         <dt>Read</dt><dd>{details.isRead ? 'Yes' : 'No'}</dd>
         <dt>Rating</dt><dd>{details.rating == null ? 'Not rated' : <><Stars rating={details.rating} /> {details.rating} out of 5</>}</dd>
+        {details.reviewComment && <><dt>Your review</dt><dd className="review-text">{details.reviewComment}</dd></>}
       </dl>
     </>}
     <div className="rating-actions"><button className="button button-secondary" type="button" onClick={close}>Close</button></div>

@@ -30,12 +30,20 @@ public static class ReadingHistoryHandler
         if (input.Rating is < 1 or > 5 || input.Rating % 0.5m != 0)
             return TypedResults.Problem(detail: "Choose a rating from 1 to 5 stars in half-star increments.", statusCode: 400);
 
+        var reviewComment = input.ReviewComment?.Trim();
+        if (reviewComment?.Length > 2000)
+            return TypedResults.Problem(detail: "Keep your review comment to 2,000 characters or fewer.", statusCode: 400);
+
         var ownerKey = LibraryAuthentication.OwnerKey(user);
         try
         {
             await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog, logger,
                 editionId => ReadingHistoryEntry.DocumentId(ownerKey, editionId),
-                book => new ReadingHistoryEntry { OwnerKey = ownerKey, WorkId = book.WorkId, EditionId = book.EditionId, Rating = input.Rating }, ct);
+                book => new ReadingHistoryEntry
+                {
+                    OwnerKey = ownerKey, WorkId = book.WorkId, EditionId = book.EditionId, Rating = input.Rating,
+                    ReviewComment = string.IsNullOrEmpty(reviewComment) ? null : reviewComment
+                }, ct);
             return TypedResults.NoContent();
         }
         catch (BookWriteException ex) { return ex.ToProblem(); }

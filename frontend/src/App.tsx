@@ -207,9 +207,9 @@ function AddBooks({ navigate, api }: { navigate: (route: Route) => void; api: Li
         </article>;
       }} />)}
     </div>}
-    {ratingTarget && <RatingDialog title={ratingTarget.title} onClose={() => setRatingTarget(null)} onSave={async rating => {
+    {ratingTarget && <RatingDialog title={ratingTarget.title} onClose={() => setRatingTarget(null)} onSave={async (rating, reviewComment) => {
       const { workId, editionId } = ratingTarget;
-      await api.markBookAsRead(workId, editionId, rating);
+      await api.markBookAsRead(workId, editionId, rating, reviewComment);
       setRead(current => new Set(current).add(editionId));
     }} />}
   </section>;

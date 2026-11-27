@@ -15,6 +15,7 @@ export type BookDetails = {
     inLibrary: boolean;
     isRead: boolean;
     rating?: number | null;
+    reviewComment?: string | null;
 };
 
 export type CatalogEdition = {
@@ -93,6 +94,7 @@ export type MarkBookAsReadRequest = {
     workId: string;
     editionId: string;
     rating: number;
+    reviewComment?: string | null;
 };
 
 export type ProblemDetails = {
