@@ -5,8 +5,6 @@ using System.Text.RegularExpressions;
 public class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
 
-public sealed class CatalogGenreTimeoutException(Exception inner) : CatalogUnavailableException(inner);
-
 public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
     private const string SearchFields = "key,title,author_name,first_publish_year,editions,editions.key,editions.title,editions.isbn,editions.publisher,editions.publish_date,editions.cover_i,editions.language";
@@ -57,14 +55,13 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         if (metadata.ValueKind == JsonValueKind.Undefined) return null;
         if (Text(metadata, "title") is not { } title) throw new CatalogUnavailableException();
         var editions = await FetchAllEditionsAsync(workId, ct);
-        var genres = await FetchGenresAsync(workId, ct);
         var work = new LibraryBook
         {
             WorkId = workId,
             Title = title,
             Authors = Texts(metadata, "author_name"),
             Subjects = Texts(metadata, "subject"),
-            Genres = genres,
+            Genres = null,
             Series = Texts(metadata, "series_name"),
             FirstPublicationYear = PositiveInt(Property(metadata, "first_publish_year")),
             Description = Description(metadata, "description")
@@ -72,13 +69,9 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         return new(work, editions);
     }
 
-    private async Task<string[]?> FetchGenresAsync(string workId, CancellationToken ct)
+    internal async Task<string[]?> FetchGenresAsync(string workId, CancellationToken ct)
     {
-        JsonDocument? details;
-        try { details = await GetAsync($"works/{workId}.json", ct); }
-        catch (CatalogUnavailableException ex) when (IsTimeout(ex)) { throw new CatalogGenreTimeoutException(ex); }
-        catch (CatalogUnavailableException) { return null; }
-        using var work = details;
+        using var details = await GetAsync($"works/{workId}.json", ct);
         if (details is null || Text(details.RootElement, "key") != $"/works/{workId}") return null;
         var references = Array(details.RootElement, "genres")
             .Select(ReadTagReference)
@@ -94,11 +87,7 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             var visited = new HashSet<string>(StringComparer.Ordinal);
             for (var redirects = 0; redirects <= 2 && visited.Add(current); redirects++)
             {
-                JsonDocument? response;
-                try { response = await GetAsync($"tags/{current}.json", ct); }
-                catch (CatalogUnavailableException ex) when (IsTimeout(ex)) { throw new CatalogGenreTimeoutException(ex); }
-                catch (CatalogUnavailableException) { break; }
-                using var tagDocument = response;
+                using var response = await GetAsync($"tags/{current}.json", ct);
                 if (response is null) break;
                 var tag = response.RootElement;
                 if (Text(tag, "key") is { } key && key != $"/tags/{current}") break;
@@ -193,13 +182,6 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         {
             throw new CatalogUnavailableException(ex);
         }
-    }
-
-    private static bool IsTimeout(Exception exception)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-            if (current is OperationCanceledException or TimeoutException) return true;
-        return false;
     }
 
     private static CatalogEdition CreateEdition(string id, string title, string[] publishers,

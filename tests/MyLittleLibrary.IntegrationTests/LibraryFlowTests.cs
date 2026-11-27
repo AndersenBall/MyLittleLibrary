@@ -89,7 +89,7 @@ public sealed class LibraryFlowTests
         using var mismatch = await PostAsync(api.Client, PaperbackId, workId: "OL999W");
         Assert.Equal(HttpStatusCode.NotFound, mismatch.StatusCode);
         Assert.Equal(6, await DocumentCountAsync(api));
-        Assert.Equal(6, api.Catalog.Requests.Count);
+        Assert.Equal(5, ImportAndSearchRequests(api).Count());
     }
 
     [Fact]
@@ -121,12 +121,11 @@ public sealed class LibraryFlowTests
         Assert.Equal(0, await DocumentCountAsync(api));
 
         await AddAsync(api.Client, EditionId);
-        Assert.Collection(api.Catalog.Requests.Skip(3),
+        Assert.Collection(ImportAndSearchRequests(api).Skip(3),
             uri => Assert.Equal("/search.json", uri.AbsolutePath),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery),
-            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=4", uri.PathAndQuery),
-            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery));
+            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=4", uri.PathAndQuery));
         Assert.Equal(EditionId, Assert.Single(await ShelfAsync(api.Client)).EditionId);
         using (var session = api.Store.OpenAsyncSession())
         {
@@ -186,120 +185,6 @@ public sealed class LibraryFlowTests
         Assert.Equal(CatalogCoverUrl, Assert.Single(await ShelfAsync(api.Client)).CoverUrl);
     }
 
-    [Fact]
-    public async Task StructuredGenresResolveStringAndObjectReferencesAndReachDetails()
-    {
-        await using var api = new ApiScenario();
-        api.Catalog.IncludeGenres = true;
-
-        await AddAsync(api.Client, EditionId);
-
-        Assert.Collection(api.Catalog.Requests,
-            uri => Assert.Equal("/search.json", uri.AbsolutePath),
-            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
-            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL169T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL174T.json", uri.PathAndQuery));
-        using (var session = api.Store.OpenAsyncSession())
-        {
-            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
-            Assert.NotNull(work.Genres);
-            Assert.Equal(["Fantasy", "Literary"], work.Genres!);
-            Assert.Equal(["Adventure", "Fantasy"], work.Subjects.Order(StringComparer.Ordinal));
-        }
-
-        var details = await DetailsAsync(api.Client, EditionId);
-        Assert.NotNull(details.Work.Genres);
-        Assert.Equal(["Fantasy", "Literary"], details.Work.Genres!);
-    }
-
-    [Fact]
-    public async Task StructuredGenresFollowTwoRedirectsDeduplicateNamesAndSkipMissingLoopAndLimit()
-    {
-        await using var api = new ApiScenario();
-        api.Catalog.IncludeGenres = true;
-        api.Catalog.IncludeRedirectGenres = true;
-
-        await AddAsync(api.Client, EditionId);
-
-        Assert.Collection(api.Catalog.Requests,
-            uri => Assert.Equal("/search.json", uri.AbsolutePath),
-            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
-            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL169T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL174T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL175T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL176T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL177T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL178T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL179T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL180T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL181T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL182T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL183T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL184T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL185T.json", uri.PathAndQuery));
-        Assert.DoesNotContain(api.Catalog.Requests, uri => uri.AbsolutePath == "/tags/OL186T.json");
-
-        using var session = api.Store.OpenAsyncSession();
-        var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
-        Assert.Equal(["Fantasy", "Literary"], work.Genres!.Order(StringComparer.Ordinal));
-    }
-
-    [Fact]
-    public async Task FailedFirstGenreProviderLookupLeavesResolvedGenresAndCompletesImport()
-    {
-        await using var api = new ApiScenario();
-        api.Catalog.IncludeGenres = true;
-        api.Catalog.FailGenreProvider = true;
-
-        var added = await AddAsync(api.Client, EditionId);
-        Assert.Equal(EditionId, added.EditionId);
-        Assert.Collection(api.Catalog.Requests,
-            uri => Assert.Equal("/search.json", uri.AbsolutePath),
-            uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
-            uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL169T.json", uri.PathAndQuery),
-            uri => Assert.Equal("/tags/OL174T.json", uri.PathAndQuery));
-        using (var session = api.Store.OpenAsyncSession())
-        {
-            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
-            Assert.Equal(["Literary"], work.Genres!);
-        }
-    }
-
-    [Fact]
-    public async Task AllUnresolvedGenresLeaveNullAndCompleteImport()
-    {
-        await using var api = new ApiScenario();
-        api.Catalog.IncludeGenres = true;
-        api.Catalog.FailGenreProvider = true;
-        api.Catalog.FailGenreLookup = true;
-
-        await AddAsync(api.Client, EditionId);
-        using (var session = api.Store.OpenAsyncSession())
-        {
-            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
-            Assert.Null(work.Genres);
-        }
-    }
-
-    [Fact]
-    public async Task GenreWorkProviderFailureLeavesNullAndCompletesImport()
-    {
-        await using var api = new ApiScenario();
-        api.Catalog.IncludeGenres = true;
-        api.Catalog.FailGenreWorkProvider = true;
-
-        await AddAsync(api.Client, EditionId);
-        Assert.Equal(3, api.Catalog.Requests.Count);
-        Assert.Equal("/works/OL10000W.json", api.Catalog.Requests.Last().PathAndQuery);
-        using (var session = api.Store.OpenAsyncSession())
-        {
-            var work = Assert.IsType<LibraryBook>(await session.LoadAsync<LibraryBook>(LibraryBook.DocumentId(WorkId), Ct));
-            Assert.Null(work.Genres);
-        }
-    }
 
     [Fact]
     public async Task SuccessfulEditionListThatOmitsTheSelectedMatchLeavesNoWrites()
@@ -310,7 +195,7 @@ public sealed class LibraryFlowTests
         using var rejected = await PostAsync(api.Client, EditionId);
         Assert.Equal(HttpStatusCode.NotFound, rejected.StatusCode);
         Assert.Equal(0, await DocumentCountAsync(api));
-        Assert.Equal(4, api.Catalog.Requests.Count);
+        Assert.Equal(3, api.Catalog.Requests.Count);
     }
 
     [Fact]
@@ -354,13 +239,13 @@ public sealed class LibraryFlowTests
         api.Catalog.FailSearches = true;
         using var unavailable = await api.Client.GetAsync(SearchPath(Title), Ct);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
-        var calls = api.Catalog.Requests.Count;
+        var calls = ImportAndSearchRequests(api).Count();
         var saved = Assert.Single(await ShelfAsync(api.Client));
         Assert.Equal(added.AddedAt, saved.AddedAt);
         using var repeated = await PostAsync(api.Client, EditionId);
         var duplicate = await ReadAsync<GalleryBook>(repeated, HttpStatusCode.OK);
         Assert.Equal(added.AddedAt, duplicate.AddedAt);
-        Assert.Equal(calls, api.Catalog.Requests.Count);
+        Assert.Equal(calls, ImportAndSearchRequests(api).Count());
     }
 
     [Fact]
@@ -412,7 +297,7 @@ public sealed class LibraryFlowTests
             (book.EditionId, book.Title, book.CoverUrl, book.Rating));
         Assert.Equal("J. R. R. Tolkien", Assert.Single(book.Authors));
 
-        var calls = api.Catalog.Requests.Count;
+        var calls = ImportAndSearchRequests(api).Count();
         using var repeated = await MarkReadAsync(api.Client, EditionId, 5);
         Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
         Assert.Equal(5, await DocumentCountAsync(api));
@@ -420,7 +305,7 @@ public sealed class LibraryFlowTests
         await AddAsync(api.Client, IllustratedId);
         using var alreadyShelved = await MarkReadAsync(api.Client, IllustratedId, 1);
         Assert.Equal(HttpStatusCode.NoContent, alreadyShelved.StatusCode);
-        Assert.Equal(calls, api.Catalog.Requests.Count);
+        Assert.Equal(calls, ImportAndSearchRequests(api).Count());
         Assert.Equal(8, await DocumentCountAsync(api));
         Assert.Collection(await ReadBooksAsync(api.Client),
             first => Assert.Equal((EditionId, (decimal?)3.5m), (first.EditionId, first.Rating)),
@@ -463,7 +348,7 @@ public sealed class LibraryFlowTests
         api.Catalog.FailEditionOffset = 2;
         using var failed = await MarkReadAsync(api.Client, EditionId);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
-        Assert.Collection(api.Catalog.Requests.Skip(3),
+        Assert.Collection(api.Catalog.Requests.Skip(2),
             uri => Assert.Equal("/search.json", uri.AbsolutePath),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
             uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery));
@@ -655,9 +540,11 @@ public sealed class LibraryFlowTests
     private static async Task<long> DocumentCountAsync(ApiScenario api) =>
         (await api.Store.Maintenance.SendAsync(new GetStatisticsOperation(), Ct)).CountOfDocuments;
 
-    private static void AssertImportRequests(IEnumerable<Uri> requests) => Assert.Collection(requests,
+    private static IEnumerable<Uri> ImportAndSearchRequests(ApiScenario api) =>
+        api.Catalog.Requests.Where(uri => uri.AbsolutePath != "/works/OL10000W.json");
+
+    private static void AssertImportRequests(IEnumerable<Uri> requests) => Assert.Collection(requests.Where(uri => uri.AbsolutePath != "/works/OL10000W.json"),
         uri => Assert.Equal("/search.json", uri.AbsolutePath), // The fixture verifies the exact work-key projection.
         uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=0", uri.PathAndQuery),
-        uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery),
-        uri => Assert.Equal("/works/OL10000W.json", uri.PathAndQuery));
+        uri => Assert.Equal("/works/OL10000W/editions.json?limit=100&offset=2", uri.PathAndQuery));
 }

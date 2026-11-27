@@ -25,7 +25,7 @@ public static class ReadingHistoryHandler
     }
 
     public static async Task<Results<NoContent, ProblemHttpResult>> MarkAsRead(
-        MarkBookAsReadRequest input, ClaimsPrincipal user, IDocumentStore store, OpenLibraryClient catalog, CancellationToken ct)
+        MarkBookAsReadRequest input, ClaimsPrincipal user, IDocumentStore store, OpenLibraryClient catalog, ILogger<LibraryBook> logger, CancellationToken ct)
     {
         if (input.Rating is < 1 or > 5 || input.Rating % 0.5m != 0)
             return TypedResults.Problem(detail: "Choose a rating from 1 to 5 stars in half-star increments.", statusCode: 400);
@@ -33,7 +33,7 @@ public static class ReadingHistoryHandler
         var ownerKey = LibraryAuthentication.OwnerKey(user);
         try
         {
-            await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog,
+            await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog, logger,
                 editionId => ReadingHistoryEntry.DocumentId(ownerKey, editionId),
                 book => new ReadingHistoryEntry { OwnerKey = ownerKey, WorkId = book.WorkId, EditionId = book.EditionId, Rating = input.Rating }, ct);
             return TypedResults.NoContent();

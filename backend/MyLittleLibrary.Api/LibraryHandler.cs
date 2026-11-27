@@ -50,12 +50,13 @@ public static class LibraryHandler
         ClaimsPrincipal user,
         IDocumentStore store,
         OpenLibraryClient catalog,
+        ILogger<LibraryBook> logger,
         CancellationToken cancellationToken)
     {
         var ownerKey = LibraryAuthentication.OwnerKey(user);
         try
         {
-            var (entry, book, work, created) = await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog,
+            var (entry, book, work, created) = await BookStore.SaveAsync(input.WorkId, input.EditionId, store, catalog, logger,
                 editionId => LibraryEntry.DocumentId(ownerKey, editionId),
                 book => new LibraryEntry { OwnerKey = ownerKey, BookId = LibraryEdition.DocumentId(book.EditionId), AddedAt = DateTimeOffset.UtcNow },
                 cancellationToken);
