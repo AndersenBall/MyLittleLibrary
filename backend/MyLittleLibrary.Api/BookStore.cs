@@ -6,7 +6,7 @@ internal static class BookStore
 {
     // The user's entry and any missing catalog metadata commit together.
     public static async Task<(TEntry Entry, LibraryEdition Book, LibraryBook Work, bool Created)> SaveAsync<TEntry>(
-        string? workId, string? editionId, IDocumentStore store, OpenLibraryClient catalog,
+        string? workId, string? editionId, IDocumentStore store, OpenLibraryClient catalog, ILogger logger,
         Func<string, string> entryDocumentId, Func<LibraryEdition, TEntry> createEntry, CancellationToken ct)
         where TEntry : class
     {
@@ -22,6 +22,7 @@ internal static class BookStore
         CatalogUnavailableException? importError = null;
         for (var attempt = 0; attempt < 3; attempt++)
         {
+            var importedWork = false;
             using var session = store.OpenAsyncSession();
             var entry = await session.LoadAsync<TEntry>(entryId, ct);
             var work = await session.LoadAsync<LibraryBook>(workDocumentId, ct);
@@ -40,7 +41,6 @@ internal static class BookStore
             {
                 if (importError is not null) throw new BookWriteException(importError.Message, 503);
                 try { import ??= await catalog.FetchWorkAsync(workId, ct); }
-                catch (CatalogGenreTimeoutException ex) { throw new BookWriteException(ex.Message, 503); }
                 catch (CatalogUnavailableException ex)
                 {
                     // Another request may have completed the import while the provider request failed.
@@ -51,6 +51,7 @@ internal static class BookStore
                 var selected = import.Editions.FirstOrDefault(e => e.EditionId == editionId)
                     ?? throw new BookWriteException("This edition does not belong to the selected work.", 404);
                 work = import.Work;
+                importedWork = true;
                 book = LibraryEdition.From(selected, work.WorkId);
                 await session.StoreAsync(work, string.Empty, workDocumentId, ct);
                 foreach (var edition in import.Editions)
@@ -65,6 +66,7 @@ internal static class BookStore
             try
             {
                 await session.SaveChangesAsync(ct);
+                if (importedWork) _ = Task.Run(() => EnrichGenresAsync(workId, store, catalog, logger));
                 return (entry, book, work!, true);
             }
             catch (ConcurrencyException)
@@ -73,6 +75,23 @@ internal static class BookStore
             }
         }
         throw new BookWriteException("The book write conflicted and could not be read back.", 409);
+    }
+
+    private static async Task EnrichGenresAsync(string workId, IDocumentStore store, OpenLibraryClient catalog, ILogger logger)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        try
+        {
+            var genres = await catalog.FetchGenresAsync(workId, timeout.Token);
+            if (genres is null) return;
+            using var session = store.OpenAsyncSession();
+            session.Advanced.Patch<LibraryBook, string[]?>(LibraryBook.DocumentId(workId), book => book.Genres, genres);
+            await session.SaveChangesAsync(timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not enrich genres for {WorkId}", workId);
+        }
     }
 }
 

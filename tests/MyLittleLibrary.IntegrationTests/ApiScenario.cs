@@ -139,18 +139,26 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
     public bool FailGenreLookup { get; set; }
     public bool FailGenreProvider { get; set; }
     public bool IncludeRedirectGenres { get; set; }
+    public bool BlockGenreLookup { get; set; }
+    public TaskCompletionSource GenreLookupStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseGenreLookup { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public bool TimeoutGenreWorkProvider { get; set; }
     public HttpStatusCode? GenreWorkTimeoutStatus { get; set; }
     public string? TimeoutGenreTagId { get; set; }
     public HttpStatusCode? GenreTagTimeoutStatus { get; set; }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = Assert.IsType<Uri>(request.RequestUri);
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal("https://openlibrary.org", uri.GetLeftPart(UriPartial.Authority));
         Requests.Enqueue(uri);
-        return Task.FromResult(uri.AbsolutePath switch
+        if (BlockGenreLookup && uri.AbsolutePath == "/works/OL10000W.json")
+        {
+            GenreLookupStarted.TrySetResult();
+            await ReleaseGenreLookup.Task.WaitAsync(cancellationToken);
+        }
+        return uri.AbsolutePath switch
         {
             "/search.json" => Search(uri),
             "/works/OL10000W.json" when uri.Query.Length == 0 => Work(),
@@ -174,7 +182,7 @@ internal sealed class OpenLibraryHandler(string[] expectedQueries) : HttpMessage
             "/works/OL10000W/editions.json" => Editions(uri),
             "/works/OL999W/editions.json" => new HttpResponseMessage(HttpStatusCode.NotFound),
             _ => throw new Xunit.Sdk.XunitException($"Unexpected Open Library request: {uri}")
-        });
+        };
     }
 
     private HttpResponseMessage Work()
