@@ -331,6 +331,8 @@ public sealed class LibraryFlowTests
         await using var api = new ApiScenario();
         using var missingRating = await api.Client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId = EditionId }, Ct);
         Assert.Equal(HttpStatusCode.BadRequest, missingRating.StatusCode);
+        using var longReview = await MarkReadAsync(api.Client, EditionId, reviewComment: new string('x', 2001));
+        Assert.Equal(HttpStatusCode.BadRequest, longReview.StatusCode);
         foreach (var rating in new[] { 0.5m, 3.25m, 5.5m })
         {
             using var invalidRating = await MarkReadAsync(api.Client, EditionId, rating);
@@ -385,7 +387,12 @@ public sealed class LibraryFlowTests
             var json = await rawDetails.Content.ReadAsStringAsync(Ct);
             Assert.DoesNotContain("ownerKey", json, StringComparison.OrdinalIgnoreCase);
         }
+        using var blank = await MarkReadAsync(api.Client, PaperbackId, reviewComment: "  ");
+        Assert.Equal(HttpStatusCode.NoContent, blank.StatusCode);
+        Assert.Null((await DetailsAsync(api.Client, PaperbackId)).ReviewComment);
+
         var libraryOnly = await DetailsAsync(api.Client, EditionId);
+        Assert.Null(libraryOnly.ReviewComment);
         Assert.Equal((EditionId, true, false, (decimal?)null),
             (libraryOnly.Edition.EditionId, libraryOnly.InLibrary, libraryOnly.IsRead, libraryOnly.Rating));
         Assert.Equal((WorkId, Title, Author, 1937),
@@ -403,12 +410,13 @@ public sealed class LibraryFlowTests
         Assert.Equal(CatalogCoverUrl, libraryOnly.Edition.CoverUrl);
         Assert.Equal("A description of this edition.", libraryOnly.Edition.Description);
 
-        using var marked = await MarkReadAsync(api.Client, IllustratedId, 3.5m);
+        using var marked = await MarkReadAsync(api.Client, IllustratedId, 3.5m, "  A great read.\nLoved the illustrations.  ");
         Assert.Equal(HttpStatusCode.NoContent, marked.StatusCode);
         var readOnly = await DetailsAsync(api.Client, IllustratedId);
         Assert.Equal((IllustratedId, false, true, (decimal?)3.5m),
             (readOnly.Edition.EditionId, readOnly.InLibrary, readOnly.IsRead, readOnly.Rating));
         Assert.Equal("An illustrated description.", readOnly.Edition.Description);
+        Assert.Equal("A great read.\nLoved the illustrations.", readOnly.ReviewComment);
 
         await AddAsync(api.Client, IllustratedId);
         var libraryAndRead = await DetailsAsync(api.Client, IllustratedId);
@@ -426,12 +434,14 @@ public sealed class LibraryFlowTests
         using var inaccessible = await other.GetAsync(DetailsPath(EditionId), Ct);
         Assert.Equal(HttpStatusCode.NotFound, inaccessible.StatusCode);
 
-        using var otherMarked = await MarkReadAsync(other, EditionId, 4);
+        using var otherMarked = await MarkReadAsync(other, EditionId, 4, "Only my review");
         Assert.Equal(HttpStatusCode.NoContent, otherMarked.StatusCode);
         var otherDetails = await DetailsAsync(other, EditionId);
         Assert.Equal((EditionId, false, true, (decimal?)4),
             (otherDetails.Edition.EditionId, otherDetails.InLibrary, otherDetails.IsRead, otherDetails.Rating));
+        Assert.Equal("Only my review", otherDetails.ReviewComment);
         var ownerDetails = await DetailsAsync(api.Client, EditionId);
+        Assert.Null(ownerDetails.ReviewComment);
         Assert.Equal((EditionId, true, false, (decimal?)null),
             (ownerDetails.Edition.EditionId, ownerDetails.InLibrary, ownerDetails.IsRead, ownerDetails.Rating));
 
@@ -522,8 +532,8 @@ public sealed class LibraryFlowTests
     private static Task<HttpResponseMessage> PostAsync(HttpClient client, string editionId, string workId = WorkId) =>
         client.PostAsJsonAsync(BooksPath, new { workId, editionId }, Ct);
 
-    private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId, decimal rating = 5) =>
-        client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId, rating }, Ct);
+    private static Task<HttpResponseMessage> MarkReadAsync(HttpClient client, string editionId, decimal rating = 5, string? reviewComment = null) =>
+        client.PostAsJsonAsync(ReadingHistoryPath, new { workId = WorkId, editionId, rating, reviewComment }, Ct);
 
     private static async Task<ReadGalleryBook[]> ReadBooksAsync(HttpClient client)
     {

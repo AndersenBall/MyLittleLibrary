@@ -28,8 +28,8 @@ export function createLibraryApi(getAccessToken?: () => Promise<string>) {
     async addLibraryBook(workId: string, editionId: string) {
       return (await add({ client, body: { workId, editionId }, throwOnError: true })).data;
     },
-    async markBookAsRead(workId: string, editionId: string, rating: number) {
-      await markRead({ client, body: { workId, editionId, rating }, throwOnError: true });
+    async markBookAsRead(workId: string, editionId: string, rating: number, reviewComment?: string) {
+      await markRead({ client, body: { workId, editionId, rating, reviewComment }, throwOnError: true });
     },
   };
 }

@@ -13,9 +13,10 @@ export function Stars({ rating }: { rating: number }) {
   </span>;
 }
 
-export function RatingDialog({ title, onClose, onSave }: { title: string; onClose: () => void; onSave: (rating: number) => Promise<void> }) {
+export function RatingDialog({ title, onClose, onSave }: { title: string; onClose: () => void; onSave: (rating: number, reviewComment?: string) => Promise<void> }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [rating, setRating] = useState<number>();
+  const [reviewComment, setReviewComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,7 +39,7 @@ export function RatingDialog({ title, onClose, onSave }: { title: string; onClos
       event.preventDefault();
       if (rating === undefined || saving) return;
       setSaving(true); setError('');
-      try { await onSave(rating); close(); }
+      try { await onSave(rating, reviewComment.trim() || undefined); close(); }
       catch (error) { setError(apiMessage(error, 'Couldn’t mark this book as read. Please try again.')); setSaving(false); }
     }}>
       <h2 id="rating-title">Rate this book</h2>
@@ -55,10 +56,14 @@ export function RatingDialog({ title, onClose, onSave }: { title: string; onClos
         </div>
         <p className="rating-selection">{rating === undefined ? 'No rating selected' : `${rating} out of 5 stars`}</p>
       </fieldset>
+      <label className="review-comment">
+        Review comment (optional)
+        <textarea rows={3} maxLength={2000} value={reviewComment} disabled={saving} onChange={event => setReviewComment(event.target.value)} />
+      </label>
       {error && <p className="form-message" role="alert">{error}</p>}
       <div className="rating-actions">
         <button className="button button-secondary" type="button" disabled={saving} onClick={close}>Cancel</button>
-        <button className="button button-primary" type="submit" disabled={rating === undefined || saving}>{saving ? 'Saving…' : 'Save rating'}</button>
+        <button className="button button-primary" type="submit" disabled={rating === undefined || saving}>{saving ? 'Saving…' : 'Mark as read'}</button>
       </div>
     </form>
   </dialog>;

@@ -3,4 +3,5 @@ public sealed record BookDetails(
     LibraryBook Work,
     bool InLibrary,
     bool IsRead,
-    decimal? Rating);
+    decimal? Rating,
+    string? ReviewComment);

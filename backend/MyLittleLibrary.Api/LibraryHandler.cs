@@ -21,7 +21,7 @@ public static class LibraryHandler
         var readEntry = await session.LoadAsync<ReadingHistoryEntry>(ReadingHistoryEntry.DocumentId(ownerKey, editionId), cancellationToken);
         if (libraryEntry is null && readEntry is null) return TypedResults.NotFound();
 
-        return TypedResults.Ok(new BookDetails(edition, work, libraryEntry is not null, readEntry is not null, readEntry?.Rating));
+        return TypedResults.Ok(new BookDetails(edition, work, libraryEntry is not null, readEntry is not null, readEntry?.Rating, readEntry?.ReviewComment));
     }
 
     public static async Task<Ok<IReadOnlyList<GalleryBook>>> GetBooks(ClaimsPrincipal user, IDocumentStore store, CancellationToken cancellationToken)
