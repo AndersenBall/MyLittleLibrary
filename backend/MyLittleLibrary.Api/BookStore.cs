@@ -40,6 +40,7 @@ internal static class BookStore
             {
                 if (importError is not null) throw new BookWriteException(importError.Message, 503);
                 try { import ??= await catalog.FetchWorkAsync(workId, ct); }
+                catch (CatalogGenreTimeoutException ex) { throw new BookWriteException(ex.Message, 503); }
                 catch (CatalogUnavailableException ex)
                 {
                     // Another request may have completed the import while the provider request failed.

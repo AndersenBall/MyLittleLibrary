@@ -2,8 +2,10 @@ using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-public sealed class CatalogUnavailableException(Exception? inner = null)
+public class CatalogUnavailableException(Exception? inner = null)
     : Exception("Open Library is temporarily unavailable. Try again shortly.", inner);
+
+public sealed class CatalogGenreTimeoutException(Exception inner) : CatalogUnavailableException(inner);
 
 public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit rateLimit)
 {
@@ -54,17 +56,63 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             .FirstOrDefault(doc => Text(doc, "key") == key);
         if (metadata.ValueKind == JsonValueKind.Undefined) return null;
         if (Text(metadata, "title") is not { } title) throw new CatalogUnavailableException();
+        var editions = await FetchAllEditionsAsync(workId, ct);
+        var genres = await FetchGenresAsync(workId, ct);
         var work = new LibraryBook
         {
             WorkId = workId,
             Title = title,
             Authors = Texts(metadata, "author_name"),
             Subjects = Texts(metadata, "subject"),
+            Genres = genres,
             Series = Texts(metadata, "series_name"),
             FirstPublicationYear = PositiveInt(Property(metadata, "first_publish_year")),
             Description = Description(metadata, "description")
         };
-        return new(work, await FetchAllEditionsAsync(workId, ct));
+        return new(work, editions);
+    }
+
+    private async Task<string[]?> FetchGenresAsync(string workId, CancellationToken ct)
+    {
+        JsonDocument? details;
+        try { details = await GetAsync($"works/{workId}.json", ct); }
+        catch (CatalogUnavailableException ex) when (IsTimeout(ex)) { throw new CatalogGenreTimeoutException(ex); }
+        catch (CatalogUnavailableException) { return null; }
+        using var work = details;
+        if (details is null || Text(details.RootElement, "key") != $"/works/{workId}") return null;
+        var references = Array(details.RootElement, "genres")
+            .Select(ReadTagReference)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (references.Length == 0) return null;
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in references)
+        {
+            var current = id;
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            for (var redirects = 0; redirects <= 2 && visited.Add(current); redirects++)
+            {
+                JsonDocument? response;
+                try { response = await GetAsync($"tags/{current}.json", ct); }
+                catch (CatalogUnavailableException ex) when (IsTimeout(ex)) { throw new CatalogGenreTimeoutException(ex); }
+                catch (CatalogUnavailableException) { break; }
+                using var tagDocument = response;
+                if (response is null) break;
+                var tag = response.RootElement;
+                if (Text(tag, "key") is { } key && key != $"/tags/{current}") break;
+                if (Text(Property(tag, "type"), "key") == "/type/redirect")
+                {
+                    if (ReadTagReference(Property(tag, "location")) is not { } next) break;
+                    current = next;
+                    continue;
+                }
+                if (Text(tag, "name") is { } name) names.Add(name);
+                break;
+            }
+        }
+        return names.Count == 0 ? null : [.. names];
     }
 
     private async Task<JsonDocument> SearchDocumentsAsync(string query, int limit, string fields, CancellationToken ct)
@@ -129,6 +177,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             await rateLimit.AcquireAsync(deadline.Token);
             using var response = await http.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (response.StatusCode == HttpStatusCode.NotFound) return null;
+            if (response.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.GatewayTimeout)
+                throw new TimeoutException("Open Library request timed out.");
             if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
             {
                 var retry = response.Headers.RetryAfter;
@@ -138,11 +188,18 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
             await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             return await JsonDocument.ParseAsync(stream, cancellationToken: deadline.Token);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException ||
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or TimeoutException ||
             ex is OperationCanceledException && !ct.IsCancellationRequested)
         {
             throw new CatalogUnavailableException(ex);
         }
+    }
+
+    private static bool IsTimeout(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is OperationCanceledException or TimeoutException) return true;
+        return false;
     }
 
     private static CatalogEdition CreateEdition(string id, string title, string[] publishers,
@@ -174,6 +231,14 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var value) ? value : default;
     private static string? AsText(JsonElement e) => e.ValueKind == JsonValueKind.String && e.GetString()?.Trim() is { Length: > 0 } text ? text : null;
     private static string? Text(JsonElement obj, string name) => AsText(Property(obj, name));
+    private static string? ReadTagReference(JsonElement value)
+    {
+        var reference = value.ValueKind == JsonValueKind.String ? AsText(value) : Text(value, "key");
+        if (reference is null) return null;
+        const string prefix = "/tags/";
+        var id = reference.StartsWith(prefix, StringComparison.Ordinal) ? reference[prefix.Length..] : reference;
+        return TagIdPattern().IsMatch(id) ? id : null;
+    }
     private static string? Description(JsonElement obj, string name)
     {
         var value = Property(obj, name);
@@ -198,6 +263,8 @@ public sealed partial class OpenLibraryClient(HttpClient http, CatalogRateLimit 
     private static partial Regex EditionIdPattern();
     [GeneratedRegex("\\AOL[0-9]{1,15}W\\z", RegexOptions.CultureInvariant)]
     private static partial Regex WorkIdPattern();
+    [GeneratedRegex("\\AOL[0-9]{1,15}T\\z", RegexOptions.CultureInvariant)]
+    private static partial Regex TagIdPattern();
 }
 
 public sealed class CatalogRateLimit(bool hasContact)

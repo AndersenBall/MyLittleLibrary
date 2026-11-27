@@ -46,7 +46,7 @@ export function BookDetailsDialog({ editionId, title, api, onClose }: { editionI
         : details.edition.description || 'No edition description available.'}</p>
       <dl className="book-details-list">
         <dt>Series</dt><dd>{value(details.work.series)}</dd>
-        <dt>Subjects</dt><dd>{value(details.work.subjects)}</dd>
+        {!!details.work.genres?.length && <><dt>Genre</dt><dd>{value(details.work.genres)}</dd></>}
         <dt>First publication year</dt><dd>{value(details.work.firstPublicationYear)}</dd>
         <dt>Publishers</dt><dd>{value(details.edition.publishers)}</dd>
         <dt>Publication date</dt><dd>{value(details.edition.publicationDate)}</dd>

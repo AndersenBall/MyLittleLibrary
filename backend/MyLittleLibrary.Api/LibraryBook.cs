@@ -6,6 +6,7 @@ public sealed class LibraryBook
     public required string Title { get; init; }
     public required string[] Authors { get; init; }
     public required string[] Subjects { get; init; }
+    public string[]? Genres { get; init; }
     public required string[] Series { get; init; }
     public int? FirstPublicationYear { get; init; }
     public string? Description { get; init; }
